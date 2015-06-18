@@ -11,6 +11,9 @@ Pop in your install DVD and you'll see a folder called "Xcode Tools". Click on t
 Sections 1-4 deal with the first time installation of the FMA
 Sections 5 and up deal with populating data & scripts
 
+copy cgi/biocode_settings_template to cgi/biocode_settings and change
+appropriate lines
+
 *********************************************************************
 * 1. SVN:
 *********************************************************************

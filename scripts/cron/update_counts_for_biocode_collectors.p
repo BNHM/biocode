@@ -8,8 +8,8 @@
 
 # $DEBUG = 1;
 
-require "/usr/local/web/test/cgi/myquery_utils.p";
-require "/usr/local/web/test/cgi/utils.p";
+require "/usr/local/web/biocode/cgi/myquery_utils.p";
+require "/usr/local/web/biocode/cgi/utils.p";
 
 $script_name = "biocode_query";
 
