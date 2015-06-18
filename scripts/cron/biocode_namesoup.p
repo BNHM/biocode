@@ -1,10 +1,10 @@
 #!/usr/bin/perl
 
-#require "/usr/local/web/cgi/myschema.p";
-require "/usr/local/web/cgi/utils.p";
-require "/usr/local/web/cgi/myquery_utils.p"; 
-#require "/usr/local/web/cgi/myimg_utils.p"; 
-#require "/usr/local/web/test/biocode/cgi/biocode_settings";
+#require "/usr/local/web/biocode/cgi/myschema.p";
+require "/usr/local/web/biocode/cgi/utils.p";
+require "/usr/local/web/biocode/cgi/myquery_utils.p"; 
+#require "/usr/local/web/biocode/cgi/myimg_utils.p"; 
+#require "/usr/local/web/biocode/cgi/biocode_settings";
 
 
 $select = "select bnhm_id, ScientificName, ColloquialName, Kingdom, Phylum, Subphylum, Superclass, Class, Subclass, ";

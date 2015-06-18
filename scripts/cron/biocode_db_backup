@@ -1,3 +1,0 @@
-/usr/local/mysql/bin/mysqldump -pbscitfly -uroot labbench > /data_biocode/biocode/database_backups/labbench_db.sql
-/usr/local/mysql/bin/mysqldump -pbscitfly -uroot geneious > /data_biocode/biocode/database_backups/geneious_db.sql
-/usr/local/mysql/bin/mysqldump -pbscitfly -uroot biocode > /data_biocode/biocode/database_backups/biocode_db.sql

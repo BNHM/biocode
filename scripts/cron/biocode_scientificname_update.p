@@ -3,7 +3,7 @@
 use strict;
 
 
-require "/usr/local/web/test/biocode/cgi/biocode_settings";
+require "/usr/local/web/biocode/cgi/biocode_settings";
 require "/usr/local/web/cgi/utils.p";
 require "/usr/local/web/cgi/myquery_utils.p"; 
 
