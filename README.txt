@@ -180,21 +180,21 @@ e. Setting up mysql
 	/usr/local/mysql/bin/mysql
 
 	CREATE DATABASE biocode;
-	CREATE USER readonly IDENTIFIED BY 'readonly'; 
+	CREATE USER username IDENTIFIED BY 'password'; 
 	USE biocode
-	GRANT SELECT ON *.* TO 'readonly'@'localhost' IDENTIFIED BY 'readonly' WITH GRANT OPTION;
+	GRANT SELECT ON *.* TO 'username'@'localhost' IDENTIFIED BY 'password' WITH GRANT OPTION;
 
 	CREATE DATABASE fma;
-	CREATE USER local_tech IDENTIFIED BY 'hogwash'; 
+	CREATE USER username IDENTIFIED BY 'password'; 
 	USE biocode;
-	GRANT ALL PRIVILEGES on *.* TO  'local_tech'@'localhost' IDENTIFIED BY 'pass' WITH GRANT OPTION;
+	GRANT ALL PRIVILEGES on *.* TO  'username'@'localhost' IDENTIFIED BY 'pass' WITH GRANT OPTION;
 	GRANT SELECT on *.* TO  'username'@'localhost' IDENTIFIED BY 'pass' WITH GRANT OPTION;
 	USE fma;
 	GRANT ALL PRIVILEGES on *.* TO  'localusername'@'localhost' IDENTIFIED BY 'pass' WITH GRANT OPTION;
 	GRANT ALL PRIVILEGES on *.* TO  'username'@'localhost' IDENTIFIED BY 'pass' WITH GRANT OPTION;
 
 	Testing, as normal user: 
-	mysql -u readonly -preadonly biocode
+	mysql -u username -ppassword biocode
 
 *********************************************************************
 * 10. Populating data into mysql database
@@ -203,10 +203,10 @@ e. Setting up mysql
 	[DARWIN]
 	mysqldump -u bnhm -pfrogchorus --add-drop-table biocode biocode biocode_collecting_event biocode_collecting_event_deleted biocode_container biocode_deleted biocode_people biocode_preservative biocode_relaxant biocode_species biocode_tissue biocode_tissue_deleted biocode_tissuetype country county state > biocode_out.sql
 	[LOCAL] 
-	mysql -u local_tech -phogwash biocode < biocode_out.sql
+	mysql -u username -ppassword biocode < biocode_out.sql
 
 	# Creating the table templates for the FMA database.
-	mysql -u local_tech -phogwash fma < createfma.sql
+	mysql -u username -ppassword fma < createfma.sql
               # this causes a syntax error with mysql on the G4
 	
 	# How to setup tables for an individual expedition (make sure to use LIKE, instead of AS below to preserve indexes)
