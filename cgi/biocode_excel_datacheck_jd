@@ -1,0 +1,642 @@
+#!/usr/bin/perl 
+# biocode_datacheck_jd -  John Deck-  March 2009
+
+# John's subroutines (to be patched in later)
+
+require "myquery_utils.p";
+require "myschema.p";
+require "utils.p";
+require "cgi-lib.pl";   # deals with multipart form data
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+# sub checkTissueBarcodeinTissueTable
+# sub checkWellinTissueTable
+# sub getBnhm_id 
+# sub get_next_tissue_num 
+# sub run_create_tissue --  loop tissue columns in spreadsheet and call create_tissue_sql
+# sub run_create_collecting_event --  loop tissue columns in spreadsheet and call create_tissue_sql
+# sub run_create_specimen --  loop tissue columns in spreadsheet and call create_tissue_sql
+# sub create_tissue -- create insert/update statements
+# sub check_tissue_columns -- this checks for tissue column validity
+
+# JBD Added 1/7/2010
+# Actual process to check for uniqueness of specimen_num_collector.
+# can be called directly directly to check the status of an individual specimen.
+# For checking the whole spreadsheet (in doing initial validation, call "checkUniquenessofSpecimen_num_Collector";
+sub checkUniquenessofSpecimen_num_CollectorProcess {
+    my ($specimen_num_collector) = @_;
+	my $msg="";
+	$query = "SELECT specimen_num_collector,phylum from biocode where specimen_num_collector = '".$specimen_num_collector."';";
+    ($db_specimen_num_collector,$db_phylum) = &get_one_record("$query","biocode");
+    # check if this equals anything -- to be updated
+    if ($db_specimen_num_collector eq $specimen_num_collector) {
+        if ($db_phylum ne $phylum) {
+            $msg.="Phylum $phylum does not match value in database (db value=$db_phylum)";
+        }
+    }
+	return $msg;
+}
+
+# specimen_num_collector IS maintained as unique but we want to be sure that if this is an update, someone really wants to update it if
+# the phylum is different
+sub checkUniquenessofSpecimen_num_Collector {
+    my ($s) = @_;
+    my $warning="";
+    #Look for records where specimen_num_collector matches (its an update!) and where phylum != 's->phylum' or coll_eventid_collector != 's->coll_eventid_collector'
+    
+    my $count,$rowdisplay;
+    $count = 1;
+    for my $cell ( sort keys %{$s->{spreadsheet}->{ "Specimens" }->{"Specimen_Num_Collector"}} ) {
+        $rowdisplay=$count+1;
+        $msg="";
+        $specimen_num_collector= strip($s->{spreadsheet}->{ "Specimens" }->{"Specimen_Num_Collector"}{$cell});
+        $phylum= strip($s->{spreadsheet}->{ "Specimens" }->{"Phylum"}{$cell});
+		$msg=&checkUniquenessofSpecimen_num_CollectorProcess($specimen_num_collector);
+        if ($msg) {
+            $warning .= "<li>WARNING .... $msg .... Specimen_Num_Collector ('$specimen_num_collector') possible key violation on row $rowdisplay. <br><i>Explanation: If you are inserting records for the first time and seeing this message it probably indicates you have chosen a specimen_num_collector value that is already taken.  If this is the case, then please choose a different specimen_num_collector and run this script again.  However, if you are updating data and have changed the phylum value for $specimen_num_collector on purpose, you may safely proceed.</i>";
+        }
+        $count++;
+    }
+    return $warning;
+}
+
+sub checkTissueBarcodeinTissueTable {
+    my ($bnhm_id,$tissue_barcode)=@_;
+    $query="SELECT concat_ws('.',bnhm_id,tissue_num),count(*) FROM biocode_tissue WHERE bnhm_id='".$bnhm_id."' and tissue_barcode='".$tissue_barcode."' group by bnhm_id,tissue_barcode";
+    ($id,$count) = &get_one_record("$query","biocode");
+    if ($count != 1) {
+        return 0;
+    } else {
+        return $id;
+    }
+}
+
+# NEAR DUPLICATE IN biocode_fma_platematch
+sub checkWellinTissueTable {
+    my ($well_number96,$format_name96)=@_;
+    $query="SELECT concat_ws('.',bnhm_id,tissue_num),count(*) FROM biocode_tissue WHERE well_number96='".$well_number96."' and format_name96='".$format_name96."'";
+	$query.=" group by well_number96,format_name96";
+    ($id,$count) = &get_one_record("$query","biocode");
+    if ($count != 1) {
+        return 0;
+    } else {
+        return $id;
+    }
+}
+
+# Check if there are destructive tissues for this specimen already in database
+# this is so we can display a warning to the user
+sub checkOtherWellsFromThisSpecimen {
+	my ($bnhm_id,$well_number96,$format_name96)=@_;
+    $query="SELECT count(*) FROM biocode_tissue WHERE bnhm_id='".$bnhm_id."' and (well_number96!='".$well_number96."' || format_name96!='".$format_name96."')";
+    ($count) = &get_one_record("$query","biocode");
+    if ($count > 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+# Check for this P/W combo in OTHER specimens
+sub checkOtherWellsOtherSpecimens {
+	my ($bnhm_id,$well_number96,$format_name96)=@_;
+    $query="SELECT count(*) FROM biocode_tissue WHERE bnhm_id!='".$bnhm_id."' and well_number96='".$well_number96."' and format_name96='".$format_name96."'";
+    ($count) = &get_one_record("$query","biocode");
+    if ($count > 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+# NEAR DUPLICATE IN biocode_fma_platematch
+sub getBnhm_id {
+    $query="SELECT bnhm_id FROM biocode where specimen_num_collector ='". $_[0]. "' LIMIT 1";
+    ($bnhm_id)=&get_one_record($query,"biocode");;
+    return $bnhm_id;
+}
+
+sub getSpecimen_Num_Collector{
+    $query="SELECT specimen_num_collector FROM biocode where bnhm_id='". $_[0]. "' LIMIT 1";
+    ($specimen_num_collector)=&get_one_record($query,"biocode");;
+    return $specimen_num_collector;
+}
+
+# NEAR DUPLICATE IN biocode_fma_platematch
+sub get_next_tissue_num {
+    my ($bnhm_id)=@_;
+    ($current_max) = &get_one_record("select max(tissue_num) from biocode_tissue where bnhm_id = '$bnhm_id'","biocode");
+    # $bad_msg .= "<li>current_max = $current_max";
+    if (!$current_max) {
+        return 1;
+    } else {
+        $current_max++;
+        return $current_max
+    }
+}
+
+sub run_create_collecting_event {
+    my ($s, $batch_id, $projectcode) = @_;
+    my ($coll_eventid_collector,$enteredby);
+    my ($sql,$bad_msg,$values,$updatevalues,$fields);
+    my $cnt = 1;
+    my $insertCnt= 0;
+    my $updateCnt= 0;
+    # Create hash of excel items so i can query them more easily below
+    undef %excel_hash;
+    for (@excel_collevent_allowable) { $excel_hash{$_} = 1; }
+
+    # Get Column Headings
+    $cnt = 1;
+    for my $column ( sort keys %{$s->{spreadsheet}->{ "Collecting_Events" }} ) {
+        # must be an existing column name but not a tissue
+        # if ($excel_hash{$column}) {
+        if ($excel_hash{$column} && $column ne "rowcount") {  # jg modified 6/19/2009
+            if ($cnt > 1) { $fields .= ","; }
+            $fields .= $column;
+            $cnt++;
+        }
+    }
+    #for my $cell ( sort keys %{$s->{spreadsheet}->{ "Collecting_Events" }->{"Coll_EventID_collector"}} ) {
+    for my $cell ( sort keys %{$s->{spreadsheet}->{ "Collecting_Events" }->{"rowcount"}} ) {
+        $values="";
+        $updatevalues="";
+        $cnt = 1;
+        for my $column ( sort keys %{$s->{spreadsheet}->{ "Collecting_Events" }} ) {
+            # must be an existing column name
+            # if ($excel_hash{$column}) {
+            if ($excel_hash{$column} && $column ne "rowcount") {  # jg modified 6/19/2009
+                if ($cnt > 1) { $values .= ","; $updatevalues .= ",";}
+                my $thisvalue = strip($s->{spreadsheet}->{ "Collecting_Events" }->{ $column}->{ $cell });
+                if ($thisvalue ne "") {
+                    # fetch data to test if this is an update or insert, etc.
+                    # following three fields are the primary key
+                    #$thisvalue =~ s/\"/&quot;/g; ## substitute any quotes
+                    $thisvalue =~ s/\"/\\\"/g; ## substitute any double quotes
+                    $thisvalue =~ s/\'/\\\'/g; ## substitute any single quotes
+                    if (lc($column) eq "coll_eventid_collector") { $coll_eventid_collector= $thisvalue;}
+                    elsif (lc($column) eq "enteredby") { $enteredby= $thisvalue;}
+                    $values .= '"'.$thisvalue. '"';
+                    $updatevalues .= $column.'="'.$thisvalue.'"';
+                } else {
+                    $values .= "NULL";
+                    $updatevalues .= $column.'=NULL';
+                }
+                $cnt++;
+            }
+        }
+        # Determine if this should be updated or inserted right here
+        if (&checkIfUpdateCollectingEvent($coll_eventid_collector,$enteredby)) {
+            $sql='UPDATE biocode_collecting_event SET ';
+            $sql.=$updatevalues.",";
+            $sql.='DateLastModified="'.$TODAY.'",';
+            $sql.='batch_id="'.$batch_id.'"';
+            $sql.=' WHERE coll_eventid_collector="'.$coll_eventid_collector.'"';# AND ';
+            #$sql.=' enteredby="'.$enteredby.'";';
+            # print "<p>sql: $sql<p>";   # jg debug
+            $bad_msg.=&process_queryMsg($sql,"biocode");
+            $updateCnt++;
+        # insert protocol
+        } else {
+            $sql = "INSERT INTO biocode_collecting_event (".$fields.",DateFirstEntered,batch_id,projectcode) VALUES (".$values.",'$TODAY','$batch_id','$projectcode');";
+            # print "<p>sql: $sql<p>";   # jg debug
+            $bad_msg.=&process_queryMsg($sql,"biocode");
+            $insertCnt++;
+        }
+    }
+    #return $bad_msg;
+    return ($bad_msg, $insertCnt, $updateCnt, $enteredby); 
+}
+sub run_create_specimen {
+    my ($s, $batch_id) = @_;
+    my ($specimen_num_collector,$phylum,$coll_eventid_collector,$bnhm_id,$catalognumbernumeric,$enteredby,$coll_eventid);
+    my ($sql,$bad_msg,$values,$updatevalues,$fields);
+    my $insertCnt = 0;
+    my $updateCnt = 0;
+    my $cnt = 1;
+
+    # Create hash of excel items so i can query them more easily below
+    undef %excel_hash;
+    for (@excel_spec_allowable) { $excel_hash{$_} = 1; }
+    undef %excel_tissue_hash;
+    for (@excel_tissue_allowable_brief) { $excel_tissue_hash{$_} = 1; }
+	# add system_spec_allowable to excel_hash
+    undef %system_hash;
+	%system_hash = %excel_hash;
+    for (@system_spec_allowable) { $system_hash{$_} = 1; }
+
+    # Get Column Headings
+    $cnt = 1;
+    #for my $column ( sort keys %{$s->{spreadsheet}->{ "Specimens" }} ) {
+    for my $column ( sort keys %system_hash ) {
+        # must be an existing column name but not a tissue
+        if (($excel_hash{$column} || $system_hash{$column}) && !$excel_tissue_hash{$column}) {
+            # don't input coll_eventid_collector!
+            # if (lc($column) ne "coll_eventid_collector") {
+            if (lc($column) ne "coll_eventid_collector" && lc($column) ne "rowcount") {  # jg modified 6/19/2009
+                if ($cnt > 1) { $fields .= ","; }
+                $fields .= $column;
+                $cnt++;
+            }
+        }
+    }
+    for my $cell ( sort keys %{$s->{spreadsheet}->{ "Specimens" }->{"rowcount"}} ) {
+        $values="";
+        $updatevalues="";
+        $cnt = 1;
+		# change to looping through all available values instead of just what is on sheet
+        #for my $column ( sort keys %{$s->{spreadsheet}->{ "Specimens" }} ) {
+        for my $column ( sort keys %system_hash ) {
+            # must be an existing column name but not a tissue
+            # if (($excel_hash{$column} || $system_hash{$column}) && !$excel_tissue_hash{$column}) {
+            if (($excel_hash{$column} || $system_hash{$column}) && !$excel_tissue_hash{$column} && $column ne "rowcount") { # jg modified 6/19/2009
+                if ($cnt > 1) { 
+                    if (lc($column) ne "coll_eventid_collector") {
+                        $values .= ","; $updatevalues .= ",";
+                    }
+                }
+                my $thisvalue = strip($s->{spreadsheet}->{ "Specimens" }->{ $column}->{ $cell });
+
+                if ($thisvalue ne "") {
+                    # fetch data to test if this is an update or insert, etc.
+                    # following three fields are the primary key
+                    #$thisvalue =~ s/\"/&quot;/g; ## substitute any quotes
+                    $thisvalue =~ s/\"/\\\"/g; ## substitute any double quotes
+                    $thisvalue =~ s/\'/\\\'/g; ## substitute any single quotes
+                    if (lc($column) eq "specimen_num_collector") { $specimen_num_collector = $thisvalue;}
+                    elsif (lc($column) eq "phylum") { $phylum = $thisvalue;}
+                    elsif (lc($column) eq "coll_eventid_collector") { 
+                        $coll_eventid_collector = $thisvalue;
+                        ($coll_eventid)=&get_one_record("SELECT eventid FROM biocode_collecting_event where coll_eventid_collector='".$coll_eventid_collector."'","biocode");
+                    }
+                    elsif (lc($column) eq "enteredby") { $enteredby= $thisvalue;}
+                    # Don't update or insert coll_eventid_collector
+                    if (lc($column) ne "coll_eventid_collector") {
+                        $values .= '"'.$thisvalue. '"';
+                        $updatevalues .= $column.'="'.$thisvalue.'"';
+                        $cnt++;
+                    }
+                } else {
+                    # Don't update or insert coll_eventid_collector
+                    if (lc($column) ne "coll_eventid_collector") {
+                        $values .= "NULL";
+                        $updatevalues .= $column.'=NULL';
+                        $cnt++;
+                    }
+                }
+            }
+        }
+        # Determine if this should be updated or inserted right here
+        # this is slow!
+        $catalognumbernumeric=&get_max_catalognumber_fast("biocode");
+        # $bnhm_id="MBIO".$catalognumbernumeric;
+        $bnhm_id = $projectcode.$catalognumbernumeric;
+        if (&checkIfUpdate($specimen_num_collector,$phylum)) {
+            $sql='UPDATE biocode SET ';
+            $sql.=$updatevalues.",";
+            $sql.='DateLastModified="'.$TODAY.'",';
+            $sql.='coll_eventid="'.$coll_eventid.'",';
+            $sql.='batch_id="'.$batch_id.'"';
+            $sql.=' WHERE specimen_num_collector="'.$specimen_num_collector.'"';
+            $bad_msg.=&process_queryMsg($sql,"biocode");
+            $updateCnt++;
+        } else {
+            $sql = "INSERT INTO biocode (".$fields.",DateFirstEntered,catalognumbernumeric,bnhm_id,ProjectCode,batch_id,seq_num,coll_eventid) VALUES (".$values.",'$TODAY',$catalognumbernumeric,'$bnhm_id','$projectcode','$batch_id',uuid(),'$coll_eventid');";
+            $bad_msg.=&process_queryMsg($sql,"biocode");
+            $insertCnt++;
+        }
+    }
+    # print "<p>sql: $sql<p>";   # jg
+    return ($bad_msg, $insertCnt, $updateCnt, $enteredby); 
+}
+
+# Check if we should run update (checks for presence of this record having been loaded previously)
+sub checkIfUpdateCollectingEvent {
+    ($coll_eventid_collector,$enteredby)=@_;
+    $sql = "SELECT count(*) FROM biocode_collecting_event WHERE coll_eventid_collector='$coll_eventid_collector' and enteredby='$enteredby'";
+    @row = &get_one_record($sql,"biocode");
+    if ($row[0] > 0) {
+        return 1;
+    } else {
+        return 0;
+    } 
+}
+
+# Check if we should run update (checks for presence of this record having been loaded previously)
+sub checkIfUpdate {
+    ($specimen_num_collector,$phylum)=@_;
+    $sql = "SELECT count(*) FROM biocode WHERE specimen_num_collector='$specimen_num_collector' and phylum='$phylum'";
+    @row = &get_one_record($sql,"biocode");
+    if ($row[0] > 0) {
+       	return 1;
+    } else {
+		# must double check uniqueness of specimen_num_collector here... this was already done in first step, 
+		# but in this case we need to determine if we actually want to do an update here, normally in the case that a user
+		# changed the phylum and already agreed to bypass a warning
+		# ... case here is that the 
+		$msg=&checkUniquenessofSpecimen_num_CollectorProcess($specimen_num_collector);
+		if ($msg ne "") {
+			#print "performing update";
+			return 1;
+		} else {
+			#print "performing insert";
+        	return 0;
+		}
+    } 
+}
+
+sub run_create_tissue {
+    my ($s, $batch_id) = @_;
+    my $sql = "";
+    my $bad_msg = "";
+    my $warning_msg = "";
+    my $enteredby = "";
+    $insertCnt = 0;
+    $updateCnt = 0;
+    for my $cell ( sort keys %{$s->{spreadsheet}->{ "Specimens" }->{ "Specimen_Num_Collector" }} ) {
+        $specimen_num_collector= $s->{spreadsheet}->{ "Specimens" }->{ "Specimen_Num_Collector" }->{ $cell };
+
+		# Tissue #1 and Plate/Well Loading
+        my $well_number96 = strip($s->{spreadsheet}->{ "Specimens" }->{ "well_number96" }->{ $cell });
+        # Force well-numbers into correct format
+        if($well_number96 =~ /(^[A-Ha-h])(\d+)$/) {
+            my $letter = $1;
+            my $number = $2;
+            if ($number !~ /(^0)/ && $number < 10) { $number = "0".$number; }
+            $well_number96 = uc($letter).$number;
+        }
+        $format_name96= strip($s->{spreadsheet}->{ "Specimens" }->{ "format_name96" }->{ $cell });
+        $tissue_type_well= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue_type_well" }->{ $cell });
+
+        $tissue_barcode= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue_barcode" }->{ $cell });
+        $tissue_type_preserved= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue_type_preserved" }->{ $cell });
+        $tissue_preservative= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue_preservative" }->{ $cell });
+        $tissue_container= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue_container" }->{ $cell });
+        $tissue_holdinginstitution= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue_HoldingInstitution" }->{ $cell });
+
+        if ($bad_msg eq "") {
+            ($bad_msg,$warning,$insertCntThis,$updateCntThis,$enteredby)=&create_tissue($specimen_num_collector,$well_number96,$format_name96,$tissue_type_well,$tissue_barcode,$tissue_type_preserved,$tissue_preservative,$tissue_container,$tissue_holdinginstitution);
+        }
+
+
+		# Tissue #2  - #5 Loading
+		$thistissue = 2;	
+		while ($thistissue <= 5) {
+			if (strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue".$thistissue."_barcode" }->{ $cell })) {
+        		$tissue_barcode= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue".$thistissue."_barcode" }->{ $cell });
+        		$tissue_type_preserved= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue".$thistissue."_type_preserved" }->{ $cell });
+        		$tissue_preservative= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue".$thistissue."_preservative" }->{ $cell });
+        		$tissue_container= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue".$thistissue."_container" }->{ $cell });
+        		$tissue_holdinginstitution= strip($s->{spreadsheet}->{ "Specimens" }->{ "tissue".$thistissue."_HoldingInstitution" }->{ $cell });
+
+				$insertCntTmp = 0;
+				$updateCntTmp = 0;
+        		if ($bad_msg eq "") {
+            		($bad_msg,$warning,$insertCntTmp,$updateCntTmp,$enteredby)=&create_tissue($specimen_num_collector,"","",$tissue_type_well,$tissue_barcode,$tissue_type_preserved,$tissue_preservative,$tissue_container,$tissue_holdinginstitution);
+        		}
+
+				$insertCntThis = $insertCntTmp + $insertCntThis;
+				$updateCntThis = $updateCntTmp + $updateCntThis;
+			}
+			$thistissue++;
+		}
+
+
+        $warning_msg .= $warning;
+        $warning="";
+        $insertCnt = $insertCnt + $insertCntThis;
+        $updateCnt = $updateCnt + $updateCntThis;
+    }
+    if ($bad_msg) {
+        $bad_msg = "<li>Error in processing Tissue SQL .... " . $bad_msg;
+    } 
+    
+    return ($bad_msg, $warning_msg,$insertCnt, $updateCnt, $enteredby); 
+}
+
+# This subroutine handles two tissues specified on the specimen worksheet: tissue_barcode samples and those in plate/wells
+sub create_tissue{
+    my ($specimen_num_collector,$well_number96,$format_name96,$tissue_type_well,$tissue_barcode,$tissue_type_preserved,$tissue_preservative,$tissue_container,$tissue_holdinginstitution) = @_;
+    my $sql = "";
+    my $next_tissue = 0;
+    my $bad_msg = "";
+    my $warning_msg = "";
+    my $insertCnt = 0;
+    my $updateCnt = 0;
+    my $enteredby = "web user";
+
+	# sub quotes
+ 	$tissue_type_well =~ s/\"/\\\"/g; 
+    $tissue_type_well =~ s/\'/\\\'/g; 
+ 	$tissue_barcode =~ s/\"/\\\"/g; 
+    $tissue_barcode =~ s/\'/\\\'/g; 
+ 	$tissue_type_preserved =~ s/\"/\\\"/g; 
+    $tissue_type_preserved =~ s/\'/\\\'/g; 
+ 	$tissue_preservative =~ s/\"/\\\"/g; 
+    $tissue_preservative =~ s/\'/\\\'/g; 
+ 	$tissue_container =~ s/\"/\\\"/g; 
+    $tissue_container =~ s/\'/\\\'/g; 
+ 	$tissue_holdinginstitution =~ s/\"/\\\"/g; 
+    $tissue_holdinginstitution =~ s/\'/\\\'/g; 
+
+    ##############################################
+    # First check to see if bnhm_id exists, if not exit with error
+    ##############################################
+    $bnhm_id=getBnhm_id($specimen_num_collector);
+    if ($bnhm_id eq "") {
+        $bad_msg = "Error inserting tissue that does not match a specimen";
+    }
+
+    ##############################################
+    # TISSUE_BARCODE INSERT AND UPDATE STATEMENTS
+    ##############################################
+    # only do this if values exist in table which means i cannot delete tissue_barcode values in spreadsheet upload
+    # the nature of this operation is too sensitive and may interfere with expeditions loading multiple tissue_barcode samples
+    # per specimen
+    if ($bad_msg eq "") {
+    #if (strip($tissue_barcode) || strip($tissue_type_preserved)) {
+    if (strip($tissue_barcode)) {
+        $thisBnhm_IdPlusTissueNum = checkTissueBarcodeinTissueTable($bnhm_id,$tissue_barcode);
+        $next_tissue=&get_next_tissue_num($bnhm_id);
+        # update archival tissue for this specimen
+        if ($thisBnhm_IdPlusTissueNum) {
+            $sql= "INSERT INTO biocode_tissue_deleted SELECT * from biocode_tissue";
+            $sql.=" WHERE bnhm_id='".$bnhm_id."' AND tissue_barcode='".$tissue_barcode."';\n";
+            my $msg=&process_queryMsg($sql,"biocode");
+            if ($msg) { $bad_msg.="$msg (SQL=$sql)<br>"; }
+
+            $sql="UPDATE biocode_tissue ";
+            $sql.="SET ";
+            $sql.="DateLastModified='".$TODAY."',";
+            $sql.="tissue_barcode='".strip($tissue_barcode)."',";
+            $sql.="holdinginstitution='".strip($tissue_holdinginstitution)."',";
+            $sql.="tissuetype='".strip($tissue_type_preserved)."',";
+            $sql.="preservative='".strip($tissue_preservative)."',";
+            $sql.="container='".strip($tissue_container)."',";
+            $sql.='batch_id="'.$batch_id.'"';
+            $sql.=" WHERE tissue_barcode='".$tissue_barcode."'";
+            $sql.=" AND bnhm_id='".$bnhm_id."';\n";
+            my $msg=&process_queryMsg($sql,"biocode");
+            if ($msg) { 
+                $bad_msg.="$msg (SQL=$sql)<br>"; 
+            } else {
+                $updateCnt++;
+            }
+        # insert archival tissue 
+        } else  {
+            # NOTE, here we translate some of the excel sheet field names to the database names
+            $sql="INSERT INTO biocode_tissue (seq_num,DateFirstEntered,bnhm_id,holdinginstitution,tissue_num,tissue_barcode,tissuetype,preservative,container,batch_id)";
+            $sql.=" VALUES (";
+            $sql.="uuid(),";
+            $sql.="'".$TODAY."',";
+            $sql.="'".$bnhm_id."',";
+            $sql.="'".strip($tissue_holdinginstitution)."',";
+            $sql.="'".$next_tissue."',";
+            $sql.="'".strip($tissue_barcode)."',";
+            $sql.="'".strip($tissue_type_preserved)."',";
+            $sql.="'".strip($tissue_preservative)."',";
+            $sql.="'".strip($tissue_container)."',";
+            $sql.="'".$batch_id."'";
+            $sql.=");\n";
+            my $msg=&process_queryMsg($sql,"biocode");
+            if ($msg) { 
+                $bad_msg.="$msg (SQL=$sql)<br>"; 
+            } else {
+                $insertCnt++;
+            }
+        }
+    }
+
+    ##############################################
+    # WELL INSERT AND UPDATE STATEMENTS
+    ##############################################
+    $thisBnhm_IdPlusTissueNum = checkWellinTissueTable($well_number96,$format_name96);
+    $booOtherWells = checkOtherWellsFromThisSpecimen($bnhm_id,$well_number96,$format_name96);
+    $booOtherWellsOtherSpecimens = checkOtherWellsOtherSpecimens($bnhm_id,$well_number96,$format_name96);
+    $next_tissue=&get_next_tissue_num($bnhm_id);
+    if ($well_number96 ne "" && $format_name96 ne "") {
+		if ($thisBnhm_IdPlusTissueNum) {
+        	#    Check to see if the P/W combo matches any other specimens
+			if ($booOtherWellsOtherSpecimens) {
+                $warning_msg.=getSpecimen_Num_Collector($bnhm_id). ": $format_name96/$well_number96 assigned to another specimen. ";
+				$warning_msg.="<a href='/query_platematcher.html?match=true&batch=".$format_name96."&field1=specimen_num_collector&field2=ScientificName&field3=Phylum&Search=Search'>Edit $format_name96</a><br>";
+        	}
+    	} else {
+			if ($booOtherWells) {
+                $warning_msg.=getSpecimen_Num_Collector($bnhm_id).": $format_name96/$well_number96 not inserted because other plate/well combinations exist for this specimen.. ";
+				$warning_msg.="<a href='/query_platematcher.html?match=true&batch=".$format_name96."&field1=specimen_num_collector&field2=ScientificName&field3=Phylum&Search=Search'>Edit $format_name96</a><br>";
+			} else {
+        		$sql="INSERT INTO biocode_tissue (seq_num,DateFirstEntered,bnhm_id,tissue_num,well_number96,format_name96,tissuetype,batch_id)";
+       	 		$sql.=" VALUES (";
+        		$sql.="uuid(),";
+        		$sql.="'".$TODAY."',";
+        		$sql.="'".$bnhm_id."',";
+        		$sql.="'".$next_tissue."',";
+        		$sql.="'".$well_number96."',";
+        		$sql.="'".$format_name96."',";
+        		$sql.="'".strip($tissue_type_well)."',";
+        		$sql.="'".$batch_id."'";
+        		$sql.=");\n";
+        		my $msg=&process_queryMsg($sql,"biocode");
+        		if ($msg) { 
+            		$bad_msg.="$msg (SQL=$sql)<br>"; 
+        		} else {
+            		$insertCnt++;
+        		}
+			}
+    	}
+    }
+	}
+    return ($bad_msg, $warning_msg, $insertCnt, $updateCnt, $enteredby); 
+}
+
+sub check_tissue_columns {
+    my ($s,$projectcode) = @_;
+    my $err_msg = "";
+    my $count,$rowdisplay;
+
+    #############################
+    # Check that plate/well combination is not repeated within spreadsheet
+    #############################
+    $count = 1;
+    foreach $field ($s->getColumn("Specimens","well_number96")) {
+        my $plate= strip($s->{spreadsheet}->{'Specimens'}->{'format_name96'}->{$count});
+        my $well= strip($s->{spreadsheet}->{'Specimens'}->{'well_number96'}->{$count});
+        my $platewell="$plate $well";
+        $rowdisplay=$count+1;
+		if ($platewell ne " ") {
+        	if ($seen{$platewell}++) {
+            	$err_msg .= "<li>Error .... Duplicate plate/well. Plate=$plate Well=$well on row $rowdisplay";
+        	}
+		}
+        $count++;
+    }
+
+    #############################
+    # well_number96 
+    #############################
+    $count = 1;
+    foreach $field ($s->getColumn("Specimens","well_number96")) {
+        my $well= strip($s->{spreadsheet}->{'Specimens'}->{'well_number96'}->{$count});
+        $rowdisplay=$count+1;
+        if ($well) {
+            ###################################
+            # Check that there is something in the plate field
+            ###################################
+            if (!strip($s->{spreadsheet}->{'Specimens'}->{'format_name96'}->{$count})) {
+                $err_msg .= "<li>Error .... Well number specified but no Plate name on row $rowdisplay\n";   
+            }
+            ###################################
+            # Check Format of well_number96
+            ###################################
+            # Make sure there is the appropriate letter to begin with
+            if($well=~ /(^[A-Ha-h])(\d+)$/) {
+                $letter = $1;
+                $number = $2;
+                # Make sure number is 1-12
+                if($number < 1 || $number > 12) {
+                    $err_msg .= "<li>Error .... Your well number $well is not in the correct format on row $rowdisplay.\n";
+                # Make sure 1-9 starts with a 0
+                } elsif($number !~ /(^0)/ && $number < 10) {
+    #                $err_msg .= "<li>Error .... Your well number $well is not in the correct format on row $rowdisplay (try adding a zero before numbers 1-9).\n";
+                }
+            } else {
+                $err_msg .= "<li>Error .... Your well number $well is not in the correct format on row $rowdisplay.\n";
+            }
+        }
+        $count++;
+    }
+
+    #############################
+    # format_name96
+    #############################
+    $count = 1;
+    foreach my $field ($s->getColumn("Specimens","format_name96")) {
+        my $plate = strip($s->{spreadsheet}->{'Specimens'}->{'format_name96'}->{$count});
+        $rowdisplay=$count+1;
+        if ($plate) {
+            # check that there is something in the well field
+            if (!strip($s->{spreadsheet}->{'Specimens'}->{'well_number96'}->{$count})) {
+                $err_msg .= "<li>Error .... Plate specified but no well number on row $rowdisplay\n";   
+            }
+            # TODO: check for proper plate name format (not sure if there is a format though!)
+        }
+		# Check to be sure format_name96 matches the biocode pattern
+		#if ($plate) {
+		#	if ($plate =~ /^Plate_M/ || $projectcode ne "MBIO") {
+		#		# do nothing
+		#	} else {
+		#		$err_msg .= "<li>The Biocode project expects format_name96 (plates) to begin with Plate_M";
+		#	}
+		#}
+        $count++;
+    }
+
+    return $err_msg;
+}
+sub elapsed {
+    ($start) = @_;
+    return (gettimeofday()*1000) - $start."\n";
+}
+

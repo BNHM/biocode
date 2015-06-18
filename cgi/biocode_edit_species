@@ -1,0 +1,1725 @@
+#!/usr/bin/perl
+#
+# biocode_edit_species
+# April 25, 2005
+# JG
+#
+# Can be called via url from specimen add form like this:
+# http://biocode.berkeley.edu:8000/cgi/biocode_edit_species?step=add&source=specimen&checkflag=1&fullname=Ginger+Ogle&no_privileges=1&genus=Foo&species=ginger&subspecies=deletethis&family=Foo&ordr=Scorpionida&class=Branchiura
+
+
+require "myquery_utils.p";
+require "myschema.p";
+require "utils.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+$DEBUG = 0;
+if($DEBUG) { print "Content-type: text/html\n\n"; }
+
+$tmp_login_dir = "$tmp_file_location/unknown_query";
+
+# list of addresses to which email is sent when changes are made to biocode_species
+
+&readParse(*input); 
+&parse_input;
+
+&set_values;  # sets all the $input{foo} to foo
+
+
+### This section is for saving info to go back to page user came from.
+$port = $ENV{'SERVER_PORT'};
+$request_uri = $ENV{'REQUEST_URI'};
+if($input{referer}) {
+    $referer_tmp = $input{referer};
+} else {
+    $http_referer = $ENV{'HTTP_REFERER'};
+}
+
+if($port eq "8000") {
+    $html_dir = "/usr/local/web/test/biocode/web";
+} else {
+    $html_dir = "/usr/local/web/biocode/web";
+}
+
+
+#### BEGIN ######
+if($input{step} eq "form") {         # initial filling out of form
+    if($source ne "specimen") {
+        &check_permissions;
+        &save_originating_url;
+    }
+    &get_additional_species_info;
+    &print_biocode_species_form;
+
+} elsif($input{step} eq "check") {   # check edited values
+    &check_form_values;
+    if($error) {
+        &print_biocode_species_form;
+    } else{
+        &update_database;
+    }
+} elsif($input{step} eq "add") {     # add a new record
+    if(!$input{referer}) {
+        &save_originating_url;
+    }
+    if($input{addtype} eq "genus") {
+        &fill_values("genus");
+    }elsif($input{addtype} eq "tribe") {
+        &fill_values("tribe");
+    }elsif($input{addtype} eq "family") {
+        &fill_values("family");
+    } else {
+	## coming from species form
+	## we don't have an addtype - Ginger added 6/21/2006
+
+	#$kingdom = $input{kingdom};
+	#$phylum = $input{phylum};
+	#$class = $input{class};
+	#$subclass = $input{subclass};
+	#$ordr = $input{ordr};
+	#$suborder = $input{suborder};
+	#$superfamily = $input{superfamily};
+	#$family = $input{family};
+	#$subfamily = $input{subfamily};
+	#$tribe = $input{tribe};
+    }
+    &print_biocode_species_form;
+
+} elsif($input{step} eq "addcheck") {
+    &check_form_values;
+    if($error) {
+        &print_biocode_species_form;
+    } else{
+        &insert_into_database;
+        if($source ne "specimen") {
+            &return_to_last_page;
+        } else {
+            &print_close_window;
+        }
+    }
+} elsif($input{step} eq "delete") {
+    &check_delete;
+} elsif($input{step} eq "deleteYes") {
+    &delete_record;
+}
+
+##### END #######
+
+
+
+sub check_permissions {
+    $query = "select * from biocode_people where name_full = '$fullname' and name_initials = '$initials'";
+    $query .= " and name_initials is not null and edit_species = 1";
+    (@row) = &get_one_record($query);
+    if(!$row[1]) {
+        print "Content-type: text/html\n\n";
+        print "You don't have permission to edit species names.";
+        # print "<p>query: $query";
+        exit;
+    }
+
+}
+
+
+
+
+
+sub checklogin {
+
+    $query = "select * from biocode_people where name_initials = '$input{name}' and passwd = '$input{password}' ";
+    $query .= " and name_initials is not null and edit_species = 1";
+    @row = &get_one_record("$query");
+    &fill_fields_with_values("biocode_people");
+    if($row[1]) {
+        # User found with password entered on form. 
+        # Make tmp file for this user, to track name & login privileges.
+        $date = `date`;
+        chdir($tmp_login_dir);
+        $login_tmp = rand(1000000);
+        $login_tmp = sprintf("%d",$login_tmp);
+
+        while(-e $login_tmp) {
+            $login_tmp = rand(1000000);
+            $login_tmp = sprintf("%d",$login_tmp);
+        }
+
+        open(FH,">$login_tmp") || die "can't open $tmp file ";
+        print FH "$name_full|$name_initials|$email|$date";
+        close(FH);
+
+        # Go back to last page user was on.
+
+        open(FH,"$input{referer}") || die "can't open $login_tmp file ";
+        while(<FH>) {
+            $http_referer = $_;
+        }
+        close(FH);
+
+        if($http_referer !~ /lfile=/) {
+            chomp($http_referer);
+            if($http_referer =~ /biocode_species_query_form\?$/) {
+                $http_referer .= "&lfile=$login_tmp";
+            } elsif($http_referer =~ /biocode_species_query_form$/) {
+                $http_referer .= "?lfile=$login_tmp";
+            } else {
+                $http_referer .= "&lfile=$login_tmp";
+            }
+        } else {
+            $http_referer =~ s/&lfile=\d*/&lfile=$login_tmp/g;
+        }
+
+        print "Location: $http_referer\n\n";
+    } else {
+        # User not found, or incorrect password.
+        $error = "<font color=red>Invalid user or password. Please try again.</font>";
+        &printform;
+    }
+
+
+}
+
+
+
+
+
+sub save_originating_url {
+
+        chdir($tmp_login_dir) || die "Can't change to $tmp_login_dir ";
+        $referer_tmp = rand(1000000);
+        $referer_tmp = sprintf("%d",$referer_tmp);
+
+        while(-e $referer_tmp) {
+            $referer_tmp = rand(1000000);
+            $referer_tmp = sprintf("%d",$referer_tmp);
+        }
+
+        open(FH,">$referer_tmp") || die "can't open $referer_tmp file ";
+        print FH "$http_referer\n";
+        close(FH);
+
+
+}
+
+
+sub set_values {
+    # global values
+
+    # added 6/21/2006
+    $kingdom = $input{kingdom};
+    $phylum = $input{phylum};
+    $subphylum = $input{subphylum};
+    $superclass = $input{superclass};
+    $class = $input{class};
+    $infraclass = $input{infraclass};
+    $subclass = $input{subclass};
+    $superorder = $input{superorder};
+    $ordr = $input{ordr};
+    $suborder = $input{suborder};
+    $infraorder = $input{infraorder};
+    $superfamily = $input{superfamily};
+
+    $family = $input{'family'};
+    $subfamily = $input{'subfamily'};
+    $tribe = $input{'tribe'};
+    $genus = $input{'genus'};
+    $species = $input{'species'};
+    $subspecies = $input{'subspecies'};
+
+    $author = $input{'author'};
+    $year = $input{'year'};
+    $seq_num = $input{'seq_num'};
+    $ordr = $input{'ordr'};
+    $species_notes = $input{'species_notes'};
+    $species_notes =~ s/\n/ /g;
+    $species_notes =~ s/\r/ /g;
+
+    $referer_tmp = $input{'referer'};
+
+    if(!$input{orig}) {
+        $orig_family = $input{'family'};
+        $orig_subfamily = $input{'family'};
+        $orig_tribe = $input{'tribe'};
+        $orig_genus = $input{'genus'};
+        $orig_species = $input{'species'};
+        $orig_subspecies = $input{'subspecies'};
+    } else {
+        ($orig_family,$orig_subfamily,$orig_tribe,$orig_genus,$orig_species,$orig_subspecies) = split(/\|/, $input{orig});
+    }
+
+
+    $lfile = $input{lfile};
+
+    $source = $input{source}; # if coming from specimen form, for example
+    $checkflag_display = $input{checkflag_display}; # for display of checkflag field
+    $no_privileges = $input{no_privileges};
+
+    if($source eq "specimen") {
+        $fullname = $input{fullname};
+        $email = "came from specimen form";
+	$notfound = $input{notfound};
+        &get_higher_taxonomy;  
+    } else {
+        open(FH, "$tmp_login_dir/$lfile");
+        while(<FH>) {
+            ($fullname, $initials, $email, $date) = split(/\|/,$_);
+        }
+        close(FH);
+    }
+
+}
+
+
+
+sub check_form_values {
+
+    # check if family/genus/species/subspecies already exists in database
+    if(!$species) {
+        $qspecies = "";
+    } else {
+        $qspecies = " and species = '$species' ";
+    }
+    if(!$subspecies) {
+        $qsubspecies = " and subspecies is null ";
+    } else {
+        $qsubspecies = " and subspecies = '$subspecies' ";
+    }
+
+    $query  = "select * from biocode_species where family = '$family' and genus = '$genus' ";
+    $query .= "$qspecies $qsubspecies";
+    (@row) = &get_one_record("$query");
+
+    if($row[6]) {   # get family field...
+        if($species && $subspecies
+            && $orig_family eq $family && $orig_genus eq $genus && $orig_species eq $species && $orig_subspecies eq $subspecies) {
+        } elsif($species && $orig_family eq $family && $orig_genus eq $genus && $orig_species eq $species ) {
+        } else {
+            # name already exists
+            $error = "This name already exists in the database: ";
+            $error .= "$family $genus $species $subspecies";
+            # $error .= "<p>$orig_family $orig_genus $orig_species $orig_subspecies";
+        }
+    } 
+
+
+    # check that year is a 4-digit integer
+    if($year) {
+        if($year !~ /^\d\d\d\d$/) {
+            $error .= "You have entered an invalid year: $year (must be a 4-digit number)<p>";
+        }
+    }
+
+    # check for required fields
+    # 6/21/2006:  Chris wants no required fields
+    $missing = "";
+    #if(!$kingdom) { $missing = "kingdom "; }
+    #if(!$phylum) { $missing .= "phylum "; }
+    #if(!$class) { $missing .= "class "; }
+    #if(!$ordr) { $missing .= "order "; }
+    #if(!$family) { $missing .= "family "; }
+    #if(!$genus) { $missing .= "genus "; }
+    #if(!$species) { $missing .= "species "; }
+    if($missing) {
+        $error .= "<br>The following required fields are missing: $missing<p>";
+    }
+
+    # what other error checking should be done for this form?
+
+
+}
+
+
+
+
+sub update_database {
+
+    $date_time = &strip(`date '+%Y-%m-%d %T'`);
+
+    $query = "select edit_name_date from biocode_species where seq_num = $seq_num ";
+    ($edit_name_date) = &get_one_record("$query");
+    $edit_name_date = $edit_name_date . ";;$fullname ($date_time)";
+ 
+
+    &get_orig_names($seq_num);
+
+    &get_update_values;
+
+
+    $update  = "update biocode_species set edit_name_date = '$edit_name_date' ";
+    $update .= "$qkingdom $qphylum $qsubphylum $qsuperclass $qclass $qsubclass $qinfraclass $qsuperorder $qordr $qsuborder $qinfraorder ";
+    $update .= "$qsuperfamily $qfamily $qsubfamily $qtribe $qsubtribe ";
+    $update .= "$qgenus $qsubgenus $qspecies $qsubspecies $qauthor $qyear $qspecies_notes ";
+    $update .= "$qlter_num $qcabinet $qdrawer $qquantity $qpinned $qalcohol $qslides $qpapered ";
+    $update .= "$qdisposition_notes $qtype $qcheckflag "; # we never update the source 
+    $update .= "where seq_num = $seq_num";
+
+    # print "Content-type: text/html\n\n";
+    # print "update: $update<p>fullname: $name_full";
+    # exit;
+
+    &process_query("$update", "biocode");
+
+
+    ### update any specimen records that have same exact name as the one we're updating:
+
+    $ScientificName = "$genus $species $subspecies";
+    $ScientificName = &strip($ScientificName);
+    if($ScientificName eq "") {
+        $qScientificName = ", ScientificName = NULL ";
+    } else {
+        $qScientificName = ", ScientificName = '$ScientificName' ";
+    }
+    
+
+    $update  = "update biocode set ";
+    $update .= "$qqkingdom $qphylum $qsubphylum $qsuperclass $qclass $qsubclass $qinfraclass $qsuperorder $qordr $qsuborder $qinfraorder ";
+    $update .= "$qsuperfamily $qfamily $qsubfamily $qtribe $qsubtribe ";
+    $update .= "$qgenus $qsubgenus $qqspecies $qqsubspecies $qauthor_year $qScientificName ";
+    $update .= "where $biocode_update_where";
+
+    &process_query("$update", "biocode");
+
+    # send an email with information about the record that was updated
+
+    open(MESSAGE, "| mailx -s \"Moorea Biocode Species Edited ($family $genus $species $subspecies)\" $recipients");
+
+    print MESSAGE "$kingdom : $phylum : $class : $ordr : $family : $genus $species $subspecies\n\n";
+    print MESSAGE "was edited by $fullname ($email)\n\n";
+
+    print MESSAGE "UPDATE: $update\n";
+
+    close(MESSAGE);
+
+
+    # Go back to last page user was on.
+
+    chdir($tmp_login_dir);
+    open(FH,"$input{referer}") || die "can't open input-referer $input{referer} file ";
+    while(<FH>) {
+        $http_referer = $_;
+    }
+    close(FH);
+
+    print "Location: $http_referer\n\n";
+
+}
+
+
+
+
+sub get_additional_species_info {
+
+    if(!$genus) {
+        # $qgenus = "";
+        $qgenus = "genus is null";
+    } else {
+        $qgenus = "genus = '$genus' ";
+    }
+    if(!$species) {
+        # $qspecies = "";
+        $qspecies = " and species is null";
+    } else {
+        $qspecies = " and species = '$species' ";
+    }
+    if(!$subspecies) {
+        $qsubspecies = " and subspecies is null ";
+    } else {
+        $qsubspecies = " and subspecies = '$subspecies' ";
+    }
+
+    # have to make sure we get correct record if genus is unknown...
+    if($tribe) {
+        $qtribe = " and tribe = '$tribe' ";
+    } else {
+        # $qtribe = "";
+        $qtribe = "and tribe is null";
+    }
+    if($subfamily) {
+        $qsubfamily = " and subfamily = '$subfamily' ";
+    } else {
+        # $qsubfamily = "";
+        $qsubfamily = "and subfamily is null";
+    }
+    if($family) {
+        $qfamily = " and family = '$family' ";
+    } else {
+        # $qfamily = "";
+        $qfamily = "and family is null";
+    }
+
+# HERE
+
+    # $query  = "select * from biocode_species where family = '$family' and genus = '$genus' ";
+    # $query  = "select * from biocode_species where $qgenus $qfamily ";
+    # $query .= "$qspecies $qsubspecies $qsubfamily $qtribe $qordr";
+    $query  = "select * from biocode_species where seq_num = $seq_num ";
+    if($DEBUG) { print "query: $query<p>" };
+    (@row) = &get_one_record("$query");
+    &fill_fields_with_values("biocode_species");
+
+}
+
+
+
+sub delete_record {
+
+    # first get all the information for record before deleting it
+    $query = "select * from biocode_species where seq_num = $seq_num";
+    (@row) = &get_one_record("$query");
+    &fill_fields_with_values("biocode_species");
+
+
+    # delete the record
+    $delete = "delete from biocode_species where seq_num = $seq_num";
+
+    &process_query("$delete", "biocode");
+
+
+    # send a message to someone that record has been deleted
+    open(MESSAGE, "| mailx -s \"Moorea Biocode Species Deleted ($family $genus $species $subspecies)\" $recipients");
+    print MESSAGE "$ordr : $family : $genus $species $subspecies\n\n";
+    print MESSAGE "was deleted by $fullname ($email)\n\n\n";
+    foreach $f (@biocode_species_schema) {
+        print MESSAGE "[$f] ${$f}\n";
+        $load .= "${$f}|";
+    }
+    chop($load); # get rid of last |
+    print MESSAGE "\n\nload file:\n\n";
+    print MESSAGE "$load\n";
+    close(MESSAGE);
+
+
+    # go to page user was previously on
+    chdir($tmp_login_dir);
+    open(FH,"$input{referer}") || die "can't open input-referer $input{referer} file ";
+    while(<FH>) {
+        $http_referer = $_;
+    }
+    close(FH);
+
+    print "Content-type: text/html\n";
+    print "Location: $http_referer\n\n";
+
+}
+
+
+
+
+
+sub print_biocode_species_form {
+
+    print "Content-type: text/html\n\n";
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/title.html" -->
+    open(FH,"$html_dir/headers_footers/title.html") || die "Can't open $html_dir/headers_footers/title.html";
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+
+    if($input{step} eq "add") {
+        print "Moorea Biocode Species Database Add Form\n";
+    } else {
+        print "Moorea Biocode Species Database Edit Form\n";
+    }
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/head1Bcss.html" -->
+    open(FH,"$html_dir/headers_footers/head1Bcss.html") || die "Can't open $html_dir/headers_footers/head1Bcss.html";
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+
+    if($input{step} eq "add") {
+        print "Moorea Biocode Species Database Add Form\n";
+    } else {
+        print "Moorea Biocode Species Database Edit Form\n";
+    }
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/head2.html" -->
+    if($input{lfile}) {
+        open(FH,"$html_dir/headers_footers/head2.html") || die "Can't open $html_dir/headers_footers/head2.html";
+    } else {
+        open(FH,"$html_dir/headers_footers/head2.html") || die "Can't open $html_dir/headers_footers/head2.html";
+    }
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/head3.html" -->
+    open(FH,"$html_dir/headers_footers/head3.html") || die "Can't open $html_dir/headers_footers/head3.html";
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+    print "<center>\n";
+    print "<i>\n";
+    print "Back to: <a href=/cgi/biocode_species_query_form?lfile=$input{lfile}>Moorea Biocode Museum Species Search</a>\n";
+    print "</i>\n";
+    print "</center>\n";
+
+    if($error) {
+        print "<blockquote><font color=red>$error</font></blockquote>\n";
+    }
+
+
+    print "<p>\n";
+    print "<form method=post action=\"/cgi/biocode_edit_species\">\n";
+    print "<input type=hidden name=referer value=$referer_tmp>\n";
+#    print "<input type=hidden name=ordr value=$ordr>\n";
+    print "<input type=hidden name=lfile value=$lfile>\n";
+    if($step ne "add" && $step ne "addcheck") {
+        print "<input type=hidden name=orig value=\"$orig_family|$orig_subfamily|$orig_tribe|$orig_genus|$orig_species|$orig_subspecies\">\n";
+        print "<input type=hidden name=seq_num value=$seq_num>\n";
+        print "<input type=hidden name=step value=check>\n";
+    } else {
+        print "<input type=hidden name=step value=addcheck>\n";
+    }
+
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td valign=top>\n";
+
+
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td valign=top>\n";
+
+
+    print "<table cellspacing=1 cellpadding=0>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "<font color=red><b>*</b></font> \n";
+    print "kingdom\n";
+    print "</td>\n";
+    $kingdom =~ s/"/&quot;/g;
+    print "<td><input type=text name=kingdom value=\"$kingdom\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "<font color=red><b>*</b></font> \n";
+    print "phylum\n";
+    print "</td>\n";
+    $phylum =~ s/"/&quot;/g;
+    print "<td><input type=text name=phylum value=\"$phylum\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "subphylum\n";
+    print "</td>\n";
+    $phylum =~ s/"/&quot;/g;
+    print "<td><input type=text name=subphylum value=\"$subphylum\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "superclass\n";
+    print "</td>\n";
+    $class =~ s/"/&quot;/g;
+    print "<td><input type=text name=superclass value=\"$superclass\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "<font color=red><b>*</b></font> \n";
+    print "class\n";
+    print "</td>\n";
+    $class =~ s/"/&quot;/g;
+    print "<td><input type=text name=class value=\"$class\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "subclass\n";
+    print "</td>\n";
+    $subclass =~ s/"/&quot;/g;
+    print "<td><input type=text name=subclass value=\"$subclass\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "infraclass\n";
+    print "</td>\n";
+    $infraclass =~ s/"/&quot;/g;
+    print "<td><input type=text name=infraclass value=\"$infraclass\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "superorder\n";
+    print "</td>\n";
+    $ordr =~ s/"/&quot;/g;
+    print "<td><input type=text name=superorder value=\"$superorder\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "<font color=red><b>*</b></font> \n";
+    print "order\n";
+    print "</td>\n";
+    $ordr =~ s/"/&quot;/g;
+    print "<td><input type=text name=ordr value=\"$ordr\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "suborder\n";
+    print "</td>\n";
+    $suborder =~ s/"/&quot;/g;
+    print "<td><input type=text name=suborder value=\"$suborder\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "infraorder\n";
+    print "</td>\n";
+    $infraorder =~ s/"/&quot;/g;
+    print "<td><input type=text name=infraorder value=\"$infraorder\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "superfamily\n";
+    print "</td>\n";
+    $superfamily =~ s/"/&quot;/g;
+    print "<td><input type=text name=superfamily value=\"$superfamily\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "<font color=red><b>*</b></font> \n";
+    print "family\n";
+    print "</td>\n";
+    $family =~ s/"/&quot;/g;
+    print "<td><input type=text name=family value=\"$family\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "subfamily\n";
+    print "</td>\n";
+    $subfamily =~ s/"/&quot;/g;
+    print "<td><input type=text name=subfamily value=\"$subfamily\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "tribe\n";
+    print "</td>\n";
+    $tribe =~ s/"/&quot;/g;
+    print "<td><input type=text name=tribe value=\"$tribe\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "subtribe\n";
+    print "</td>\n";
+    $subtribe =~ s/"/&quot;/g;
+    print "<td><input type=text name=subtribe value=\"$subtribe\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "genus\n";
+    print "</td>\n";
+    $genus =~ s/"/&quot;/g;
+    print "<td><input type=text name=genus value=\"$genus\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "subgenus\n";
+    print "</td>\n";
+    $subgenus =~ s/"/&quot;/g;
+    print "<td><input type=text name=subgenus value=\"$subgenus\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "species\n";
+    print "</td>\n";
+    $species =~ s/"/&quot;/g;
+    print "<td><input type=text name=species value=\"$species\"></td></tr>\n";
+
+    print "<tr align=right>\n";
+    print "<td>\n";
+    print "subspecies\n";
+    print "</td>\n";
+    $subspecies =~ s/"/&quot;/g;
+    print "<td><input type=text name=subspecies value=\"$subspecies\"></td></tr>\n";
+
+
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+
+
+    print "<td valign=top>\n";
+
+
+    print "<table cellspacing=1 cellpadding=0>\n";
+    print "<tr>\n";
+    print "<td>\n";
+
+
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "author\n";
+    print "</td>\n";
+    $author =~ s/"/&quot;/g;
+    $author =~ s/ and / & /g;  # G.O. for biocode_add_spec. -- ampersand in the url bombs
+    print "<td><input type=text name=author value=\"$author\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "year\n";
+    print "</td>\n";
+    print "<td><input type=text name=year value=\"$year\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "lter_num\n";
+    print "</td>\n";
+    print "<td><input type=text name=lter_num value=\"$lter_num\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "cabinet\n";
+    print "</td>\n";
+    print "<td><input type=text name=cabinet value=\"$cabinet\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "drawer\n";
+    print "</td>\n";
+    print "<td><input type=text name=drawer value=\"$drawer\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "quantity\n";
+    print "</td>\n";
+    print "<td><input type=text name=quantity value=\"$quantity\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "pinned\n";
+    print "</td>\n";
+    print "<td><input type=text name=pinned value=\"$pinned\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "alcohol\n";
+    print "</td>\n";
+    print "<td><input type=text name=alcohol value=\"$alcohol\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "slides\n";
+    print "</td>\n";
+    print "<td><input type=text name=slides value=\"$slides\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "papered\n";
+    print "</td>\n";
+    print "<td><input type=text name=papered value=\"$papered\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "disposition<br>notes\n";
+    print "</td>\n";
+    print "<td><input type=textarea name=disposition_notes value=\"$disposition_notes\"></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "type\n";
+    print "</td>\n";
+    print "<td><input type=text name=type value=\"$type\"></td></tr>\n";
+
+    if($no_privileges == 1) {
+        print "<input type=hidden name=checkflag value=1>\n";
+        print "<input type=hidden name=source value=specimen>\n";
+        print "<input type=hidden name=fullname value=\"$fullname\">\n";
+        print "<input type=hidden name=no_privileges value=1>\n";
+    } else {
+        print "<tr>\n";
+        print "<td align=right>\n";
+        print "check flag\n";
+        print "</td>\n";
+        print "<td>";
+        print "<table border=0 width=100%><tr><td>";
+        if($checkflag) {
+            print "<input type=checkbox name=checkflag checked>\n";
+        } else {
+            print "<input type=checkbox name=checkflag>\n";
+        }
+        print "<input type=hidden name=no_privileges value=0>\n";
+        print "</td>";
+        print "<td align=center>";
+        print "[if selected, this <br>record needs checking]\n";
+        print "</td></tr>";
+        print "</table>";
+
+        print "</td></tr>";
+    }
+
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+
+    print "<tr>\n";
+    print "<td colspan=2 align=right>\n";
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td align=right>\n";
+    print "species<br>notes\n";
+    print "</td>\n";
+    print "<td align=right><textarea cols=50 rows=4 wrap=virtual name=species_notes>$species_notes</textarea></td></tr>\n";
+    print "</table>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td colspan=2 align=center>\n";
+    print "<input type=submit value=Submit>  <input type=reset value=Clear>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td colspan=2 align=left>\n";
+    print "<font color=red><b>* Strongly recommended</b></font> <br>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+    if($step ne "add" && $step ne "addcheck") {
+        ### gray table with choices for adding/deleting records 
+        print "<td valign=top>\n";
+
+        print "<table width=100% id=edit_choices cellpadding=10>\n";
+        print "<tr>\n";
+        print "<td class=edit_choices>\n";
+        print "Other database functions:\n";
+        print "<p>\n";
+        print "<b><a href=\"/cgi-bin/biocode_edit_species?lfile=$lfile&step=delete&referer=$referer_tmp&seq_num=$seq_num\">Delete</a></b> ";
+        print "this species record: <i>$ordr : $orig_family : $orig_genus $orig_species $orig_subspecies</i>\n";
+        print "<p>\n";
+        print "<b><a href=\"/cgi-bin/biocode_edit_species?lfile=$lfile&step=add&referer=$referer_tmp&addtype=genus&seq_num=$seq_num\">Add</a></b> a new species record in <b>genus <i>$genus</i></b>.\n";
+        print "<p>\n";
+        if($tribe) {
+            print "<b><a href=\"/cgi-bin/biocode_edit_species?lfile=$lfile&step=add&referer=$referer_tmp&addtype=tribe&seq_num=$seq_num\">Add</a></b> a new species record in <b>tribe <i>$tribe</i></b>.\n";
+            print "<p>\n";
+        }
+        print "<b><a href=\"/cgi-bin/biocode_edit_species?lfile=$lfile&step=add&referer=$referer_tmp&addtype=family&seq_num=$seq_num\">Add</a></b> a new species record in <b>family <i>$family</i></b>.\n";
+        print "<p>\n";
+        print "<b><a href=\"/cgi-bin/biocode_edit_species?lfile=$lfile&step=add&referer=$referer_tmp&addtype=novalues\">Add</a></b> a new species record (no values pre-entered).\n";
+        print "<p>\n";
+        print "<p>\n";
+        print "</td>\n";
+        print "</tr>\n";
+        print "</table>\n";
+
+
+        print "</td>\n";
+        ### end of gray table ###
+    }
+
+
+    print "</form>\n";
+  
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+    if ($DEBUG) {
+         print "debug MSG: $debug_msg\n";
+    }
+
+    &print_biocode_footer("species_search");
+
+
+
+
+}
+
+sub get_update_values {
+
+    if(!$kingdom) {
+        $qkingdom = ", kingdom = NULL ";
+        $qqkingdom = " kingdom = NULL ";
+    } else {
+        $kingdom = "\L\u$kingdom";
+        $qkingdom = ", kingdom = '$kingdom' ";
+        $qqkingdom = " kingdom = '$kingdom' ";
+    }
+    if(!$phylum) {
+        $qphylum = ", phylum = NULL ";
+    } else {
+        $phylum = "\L\u$phylum";
+        $qphylum = ", phylum = '$phylum' ";
+    }
+    if(!$subphylum) {
+        $qsubphylum = ", subphylum = NULL ";
+    } else {
+        $subphylum = "\L\u$subphylum";
+        $qsubphylum = ", subphylum = '$subphylum' ";
+    }
+    if(!$superclass) {
+        $qsuperclass = ", superclass = NULL ";
+    } else {
+        $superclass = "\L\u$superclass";
+        $qsuperclass = ", superclass = '$superclass' ";
+    }
+    if(!$class) {
+        $qclass = ", class = NULL ";
+    } else {
+        $class = "\L\u$class";
+        $qclass = ", class = '$class' ";
+    }
+    if(!$subclass) {
+        $qsubclass = ", subclass = NULL ";
+    } else {
+        $qsubclass = ", subclass = '$subclass' ";
+    }
+    if(!$infraclass) {
+        $qinfraclass = ", infraclass = NULL ";
+    } else {
+        $qinfraclass = ", infraclass = '$infraclass' ";
+    }
+
+
+    if(!$superorder) {
+        $qsuperorder = ", superorder = NULL ";
+    } else {
+        $qsuperorder = ", superorder = '$superorder' ";
+    }
+
+    if(!$ordr) {
+        $qordr = ", ordr = NULL ";
+    } else {
+        $ordr = "\L\u$ordr";
+        $qordr = ", ordr = '$ordr' ";
+    }
+
+    if(!$suborder) {
+        $qsuborder = ", suborder = NULL ";
+    } else {
+        $qsuborder = ", suborder = '$suborder' ";
+    }
+
+    if(!$infraorder) {
+        $qinfraorder = ", infraorder = NULL ";
+    } else {
+        $qinfraorder = ", infraorder = '$infraorder' ";
+    }
+
+    if(!$superfamily) {
+        $qsuperfamily = ", superfamily = NULL ";
+    } else {
+        $qsuperfamily = ", superfamily = '$superfamily' ";
+    }
+
+
+    if(!$family) {
+        $qfamily = ", family = NULL ";
+    } else {
+        $family = "\L\u$family";
+        $qfamily = ", family = '$family' ";
+    }
+    if(!$subfamily) {
+        $qsubfamily = ", subfamily = NULL ";
+    } else {
+        $family = "\L\u$family";
+        $qsubfamily = ", subfamily = '$subfamily' ";
+    }
+
+    if(!$tribe) {
+        $qtribe = ", tribe = NULL ";
+    } else {
+        $tribe = "\L\u$tribe";
+        $qtribe = ", tribe = '$tribe' ";
+    }
+
+    if(!$subtribe) {
+        $qsubtribe = ", subtribe = NULL ";
+    } else {
+        $subtribe = "\L\u$subtribe";
+        $qsubtribe = ", subtribe = '$subtribe' ";
+    }
+    if(!$genus) {
+        $qgenus = ", genus = NULL ";
+    } else {
+        $genus = "\L\u$genus";
+        $qgenus = ", genus = '$genus' ";
+    }
+    if(!$subgenus) {
+        $qsubgenus = ", subgenus = NULL ";
+    } else {
+        if($subgenus =~ /\(/) {    # uppercase first letter of word even if there is a parenthesis around the word
+            $subgenus = "\L$subgenus";
+            $subgenus =~ s/\((\w)/\(\u$1/g;
+        } else {
+            $subgenus = "\L\u$subgenus";
+        }
+        $qsubgenus = ", subgenus = '$subgenus' ";
+    }
+    if(!$species) {
+        $qspecies = ", species = NULL ";
+        $qqspecies = ", specificepithet = NULL "; # messy -- field names different in biocode & biocode_species
+    } else {
+        $species = "\L$species";
+        $qspecies = ", species = '$species' ";
+        $qqspecies = ", specificepithet = '$species' "; # messy -- field names different in biocode & biocode_species
+    }
+    if(!$subspecies) {
+        $qsubspecies = ", subspecies = NULL ";
+        $qqsubspecies = ", subspecificepithet = NULL ";  # messy -- field names different in biocode & biocode_species
+    } else {
+        $subspecies = "\L$subspecies";
+        $qsubspecies = ", subspecies = '$subspecies' ";
+        $qqsubspecies = ", subspecificepithet = '$subspecies' "; # messy -- field names different in biocode & biocode_species
+    }
+
+    $author =~ s/'/\\'/g;
+    if(!$author) {
+        $qauthor = ", author = NULL ";
+    } else {
+        $qauthor = ", author = '$author' ";
+    }
+    if(!$year) {
+        $qyear = ", year = NULL ";
+    } else {
+        $qyear = ", year = '$year' ";
+    }
+
+    $qauthor_year = "$author $year";
+    if($qauthor_year =~ /\(/) {  # move parens around both author & year, for biocode table ScientificNameAuthor field
+        $qauthor_year =~ s/\(//g;
+        $qauthor_year =~ s/\)//g;
+        $qauthor_year = ", ScientificNameAuthor = '($qauthor_year)'";
+    } else {
+        $qauthor_year = ", ScientificNameAuthor = '$qauthor_year'";
+    }
+
+    $species_notes =~ s/'/\\'/g;
+    if(!$species_notes) {
+        $qspecies_notes = ", species_notes = NULL ";
+    } else {
+        $qspecies_notes = ", species_notes = '$species_notes' ";
+    }
+    if(!$lter_num) {
+        $qlter_num = ", lter_num = NULL ";
+    } else {
+        $qlter_num = ", lter_num = '$lter_num' ";
+    }
+    if(!$cabinet) {
+        $qcabinet = ", cabinet = NULL ";
+    } else {
+        $qcabinet = ", cabinet = '$cabinet' ";
+    }
+    if(!$drawer) {
+        $qdrawer = ", drawer = NULL ";
+    } else {
+        $qdrawer = ", drawer = '$drawer' ";
+    }
+    if(!$quantity) {
+        $qquantity = ", quantity = NULL ";
+    } else {
+        $qquantity = ", quantity = '$quantity' ";
+    }
+    if(!$pinned) {
+        $qpinned = ", pinned = NULL ";
+    } else {
+        $qpinned = ", pinned = '$pinned' ";
+    }
+    if(!$alcohol) {
+        $qalcohol = ", alcohol = NULL ";
+    } else {
+        $qalcohol = ", alcohol = '$alcohol' ";
+    }
+    if(!$slides) {
+        $qslides = ", slides = NULL ";
+    } else {
+        $qslides = ", slides = '$slides' ";
+    }
+    if(!$papered) {
+        $qpapered = ", papered = NULL ";
+    } else {
+        $qpapered = ", papered = '$papered' ";
+    }
+
+    $disposition_notes =~ s/'/\\'/g;
+    if(!$disposition_notes) {
+        $qdisposition_notes = ", disposition_notes = NULL ";
+    } else {
+        $qdisposition_notes = ", disposition_notes = '$disposition_notes' ";
+    }
+    if(!$type) {
+        $qtype = ", type = NULL ";
+    } else {
+        $qtype = ", type = '$type' ";
+    }
+
+    if(!$checkflag) {
+        $qcheckflag = ", checkflag = 0";
+    } else {
+        $qcheckflag = ", checkflag = 1 ";
+    }
+
+#    if(!$source) {
+#        $qsource = ", source = NULL ";
+#    } else {
+#        $qsource = ", source = '$source' ";
+#    }
+}
+
+
+
+
+sub check_delete {
+
+
+    print "Content-type: text/html\n\n";
+
+    $query = "select * from biocode_species where seq_num = $seq_num";
+    (@row) = &get_one_record("$query");
+    &fill_fields_with_values("biocode_species");
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/title.html" -->
+    open(FH,"$html_dir/headers_footers/title.html") || die "Can't open $html_dir/headers_footers/title.html";
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+
+    print "Moorea Biocode Species Database Login\n";
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/head1css.html" -->
+    open(FH,"$html_dir/headers_footers/head1css.html") || die "Can't open $html_dir/headers_footers/head1css.html";
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+
+    print "Moorea Biocode Species Database\n";
+
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/head2.html" -->
+    if($input{lfile}) {
+        open(FH,"$html_dir/headers_footers/head2.html") || die "Can't open $html_dir/headers_footers/head2.html";
+    } else {
+        open(FH,"$html_dir/headers_footers/head2.html") || die "Can't open $html_dir/headers_footers/head2.html";
+    }
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+    #### <!--#include virtual="http://biocode.berkeley.edu/biocode/head3.html" -->
+    open(FH,"$html_dir/headers_footers/head3.html") || die "Can't open $html_dir/headers_footers/head3.html";
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+
+
+
+
+    print "<center>\n";
+    print "<small>\n";
+    print "<i>\n";
+    print "Back to: <a href=/cgi-bin/biocode_species_query_form&lfile=$lfile>Moorea Biocode Museum Species Search</a>\n";
+    print "</small>\n";
+    print "</i>\n";
+    print "</center>\n";
+
+    if($error) {
+        print "<p>&nbsp;&nbsp;$error\n";
+    }
+
+
+    print "<p>\n";
+    print "<form method=get action=\"/cgi/biocode_edit_species\" method=\"get\">\n";
+    print "<input type=hidden name=step value=deleteYes>\n";
+    print "<input type=hidden name=lfile value=$lfile>\n";
+    print "<input type=hidden name=seq_num value=$seq_num>\n";
+    print "<input type=hidden name=referer value=$referer_tmp>\n";
+
+
+    print "<blockquote>\n";
+    print "Are you sure you want to <font color=red><b>completely delete</b></font> ";
+    print "the record for <b><i>$ordr: $family: $genus $species $subspecies</i></b>?\n";
+    print "<p>\n";
+    print "<input type=\"submit\" value=\"Yes, delete this record.\">\n";
+
+    print "<input type=button value=\"No, do NOT delete anything.\" onClick=\"javascript:history.go(-1)\">\n";
+
+    print "</blockquote>\n";
+
+    print "<p>\n";
+
+    print "</form>\n";
+
+    #### <!--#include file="http://biocode.berkeley.edu/headers_footers/footer.txt" -->
+    open(FH,"$html_dir/headers_footers/footer.html") || die "Can't open $html_dir/headers_footers/footer.html";
+    while(<FH>) {
+        print "$_";
+    }
+    close(FH);
+
+
+
+
+
+}
+
+
+
+sub insert_into_database {
+
+    &get_insert_values;
+
+    $insert  = "insert into biocode_species values ( ";
+    $insert .= "$seq_num,$qkingdom,$qphylum,$qsubphylum,$qsuperclass,$qclass,$qsubclass,$qinfraclass,$qsuperorder,$qordr,$qsuborder,";
+    $insert .= "$qinfraorder,$qsuperfamily,$qfamily,$qsubfamily,$qtribe,";
+    $insert .= "$qsubtribe,$qgenus,$qsubgenus,$qspecies,$qsubspecies,$qauthor,$qyear,$qspecies_notes,$qlter_num,$qcabinet,";
+    $insert .= "$qdrawer,$qquantity,$qpinned,$qalcohol,$qslides,$qpapered,$qdisposition_notes,$qtype,$photo,$date_added,";
+    $insert .= "$edit_name_date,$checkflag,$qsource,$qcollection";
+    $insert .= ")";
+
+    # print "Content-type: text/html\n\n";
+    # print "insert: $insert<p>";
+    # exit;
+
+    &process_query("$insert", "biocode");
+
+
+    # send an email with information about the record that was added
+
+    open(MESSAGE, "| mailx -s \"Moorea Biocode Species Added ($family $genus $species $subspecies)\" $recipients");
+
+    print MESSAGE "$ordr : $family : $genus $species $subspecies\n\n";
+    print MESSAGE "was added by $fullname ($email)\n";
+
+    close(MESSAGE);
+}
+
+
+
+
+
+sub get_insert_values {
+
+    $query = "select max(seq_num) from biocode_species";
+    ($seq_num) = &get_one_record("$query");
+    $seq_num++;
+
+
+    if(!$kingdom) {
+        $qkingdom = "NULL";
+    } else {
+        $kingdom = "\L\u$kingdom";
+        $qkingdom = "'$kingdom'";
+    }
+    if(!$phylum) {
+        $qphylum = "NULL";
+    } else {
+        $phylum = "\L\u$phylum";
+        $qphylum = "'$phylum'";
+    }
+    if(!$subphylum) {
+        $qsubphylum = "NULL";
+    } else {
+        $subphylum = "\L\u$subphylum";
+        $qsubphylum = "'$subphylum'";
+    }
+    if(!$superclass) {
+        $qsuperclass = "NULL";
+    } else {
+        $superclass = "\L\u$superclass";
+        $qsuperclass = "'$superclass'";
+    }
+    if(!$class) {
+        $qclass = "NULL";
+    } else {
+        $class = "\L\u$class";
+        $qclass = "'$class'";
+    }
+    if(!$subclass) {
+        $qsubclass = "NULL";
+    } else {
+        $qsubclass = "'$subclass'";
+    }
+    if(!$infraclass) {
+        $qinfraclass = "NULL";
+    } else {
+        $infraclass = "\L\u$infraclass";
+        $qinfraclass = "'$infraclass'";
+    }
+
+
+    if(!$superorder) {
+        $qsuperorder = "NULL";
+    } else {
+        $superordr = "\L\u$superordr";
+        $qsuperorder = "'$superorder'";
+    }
+
+    if(!$ordr) {
+        $qordr = "NULL";
+    } else {
+        $ordr = "\L\u$ordr";
+        $qordr = "'$ordr'";
+    }
+
+    if(!$suborder) {
+        $qsuborder = "NULL";
+    } else {
+        $suborder = "\L\u$suborder";
+        $qsuborder = "'$suborder'";
+    }
+
+    if(!$infraorder) {
+        $qinfraorder = "NULL";
+    } else {
+        $infraorder = "\L\u$infraorder";
+        $qinfraorder = "'$infraorder'";
+    }
+
+    if(!$superfamily) {
+        $qsuperfamily = "NULL";
+    } else {
+        $superfamily = "\L\u$superfamily";
+        $qsuperfamily = "'$superfamily'";
+    }
+
+
+    if(!$family) {
+        $qfamily = "NULL";
+    } else {
+        $family = "\L\u$family";
+        $qfamily = "'$family'";
+    }
+    if(!$subfamily) {
+        $qsubfamily = "NULL";
+    } else {
+        $subfamily = "\L\u$subfamily";
+        $qsubfamily = "'$subfamily'";
+    }
+
+    if(!$tribe) {
+        $qtribe = "NULL";
+    } else {
+        $tribe = "\L\u$tribe";
+        $qtribe = "'$tribe'";
+    }
+
+    if(!$subtribe) {
+        $qsubtribe = "NULL";
+    } else {
+        $subtribe = "\L\u$subtribe";
+        $qsubtribe = "'$subtribe'";
+    }
+    if(!$genus) {
+        $qgenus = "NULL";
+    } else {
+        $genus = "\L\u$genus";
+        $qgenus = "'$genus'";
+    }
+    if(!$subgenus) {
+        $qsubgenus = "NULL";
+    } else {
+        $subgenus = "\L$subgenus";
+        $qsubgenus = "'$subgenus'";
+    }
+    if(!$species) {
+        $qspecies = "NULL";
+    } else {
+        $species = "\L$species";
+        $qspecies = "'$species'";
+    }
+    if(!$subspecies) {
+        $qsubspecies = "NULL";
+    } else {
+        $subspecies = "\L$subspecies";
+        $qsubspecies = "'$subspecies'";
+    }
+
+    $author =~ s/'/\\'/g;
+    if(!$author) {
+        $qauthor = "NULL";
+    } else {
+        $qauthor = "'$author'";
+    }
+    if(!$year) {
+        $qyear = "NULL";
+    } else {
+        $qyear = "'$year'";
+    }
+
+    $species_notes =~ s/'/\\'/g;
+    if(!$species_notes) {
+        $qspecies_notes = "NULL";
+    } else {
+        $qspecies_notes = "'$species_notes'";
+    }
+    if(!$lter_num) {
+        $qlter_num = "NULL";
+    } else {
+        $qlter_num = "'$lter_num'";
+    }
+    if(!$cabinet) {
+        $qcabinet = "NULL";
+    } else {
+        $qcabinet = "'$cabinet'";
+    }
+    if(!$drawer) {
+        $qdrawer = "NULL";
+    } else {
+        $qdrawer = "'$drawer'";
+    }
+    if(!$quantity) {
+        $qquantity = "NULL";
+    } else {
+        $qquantity = "'$quantity'";
+    }
+    if(!$pinned) {
+        $qpinned = "NULL";
+    } else {
+        $qpinned = "'$pinned'";
+    }
+    if(!$alcohol) {
+        $qalcohol = "NULL";
+    } else {
+        $qalcohol = "'$alcohol'";
+    }
+    if(!$slides) {
+        $qslides = "NULL";
+    } else {
+        $qslides = "'$slides'";
+    }
+    if(!$papered) {
+        $qpapered = "NULL";
+    } else {
+        $qpapered = "'$papered'";
+    }
+
+    $disposition_notes =~ s/'/\\'/g;
+    if(!$disposition_notes) {
+        $qdisposition_notes = "NULL";
+    } else {
+        $qdisposition_notes = "'$disposition_notes'";
+    }
+    if(!$type) {
+        $qtype = "NULL";
+    } else {
+        $qtype = "'$type'";
+    }
+    if($input{checkflag}) {
+        $checkflag = 1;
+    } else {
+        $checkflag = 0;
+    }
+
+    if(!$source) {
+        $qsource = "NULL";
+    } else {
+        $qsource = "'$source'";
+    }
+
+    if($collection != 0) {
+        $qcollection = "1";
+    } else {
+        $qcollection = "1";
+    }
+
+    $photo = &get_photo($genus, $species, $subspecies);
+    $date_added = &strip(`date '+%Y-%m-%d %T'`);
+    $edit_name_date = "'$fullname ($date_added)'";
+    $date_added = "'$date_added'";
+
+}
+
+
+
+
+
+
+
+
+sub get_photo {
+
+    my ($genus, $species, $subspecies) = @_;
+    my $photo;
+
+    $taxon = "$genus $species $subspecies";
+    $taxon = &strip($taxon);
+    $select = "select count(*) from img where taxon = '$taxon' and class = 'Insecta'";
+    ($count) = &get_one_record("$select","image");
+    if($count) { 
+        $photo = 1;
+    } else {
+        $photo = 0;
+    }
+    return $photo;
+}
+
+
+
+sub return_to_last_page {
+
+    chdir($tmp_login_dir);
+    open(FH,"$input{referer}") || die "can't open input-referer $input{referer} file ";
+    while(<FH>) {
+        $http_referer = $_;
+    }
+    close(FH);
+
+    print "Location: $http_referer\n\n";
+
+}
+
+sub fill_values {
+    my ($taxon_level) = @_;
+    if($taxon_level eq "genus") {
+        $query  = "select kingdom, phylum, subphylum, superclass, class, subclass, infraclass, superorder, ordr, suborder, infraorder, ";
+        $query .= " superfamily, family, subfamily, tribe, subtribe, genus ";
+        $query .= " from biocode_species where seq_num = $seq_num";
+        ($kingdom, $phylum, $subphylum, $superclass, $class, $subclass, $infraclass, $superorder, $ordr, $suborder, $infraorder, $superfamily, $family, $subfamily, $tribe, $subtribe, $genus) 
+            = &get_one_record("$query");
+
+    } elsif($taxon_level eq "tribe") {
+        $query  = "select kingdom, phylum, subphylum, superclass, class, subclass, infraclass, superorder, ordr, suborder, infraorder, superfamily, family, subfamily, tribe ";
+        $query .= " from biocode_species where seq_num = $seq_num";
+        ($kingdom, $phylum, $subphylum, $superclass, $class, $subclass, $infraclass, $superorder, $ordr, $suborder, $infraorder, $superfamily, $family, $subfamily, $tribe) 
+            = &get_one_record("$query");
+
+    } elsif($taxon_level eq "family") {
+        $query  = "select kingdom, phylum, subphylum, superclass, class, infraclass, subclass, superorder, ordr, suborder, infraorder, superfamily, family ";
+        $query .= " from biocode_species where seq_num = $seq_num";
+        ($kingdom, $phylum, $subphylum, $superclass, $class, $subclass, $infraclass, $superorder, $ordr, $suborder, $infraorder, $superfamily, $family) 
+            = &get_one_record("$query");
+    }
+
+}
+
+
+
+
+sub print_close_window {
+
+    print "Content-type: text/html\n\n";
+
+    print "<html><body>";
+    print "<center>Your record was successfully entered into the Moorea Biocode species database.</center>";
+
+    ## close pop-up window
+    print "<center>\n";
+    print "<a href=\"javascript:self.close()\">\n";
+    print "Close Window</a>\n";
+    print "</center>\n";
+    print "</body></html>\n";
+
+}
+
+
+
+sub get_higher_taxonomy {
+    ### pre-fill higher taxonomy when adding new species from specimen form.
+    ### "notfound" is the most specific taxon rank coming in from biocode_add_specimens
+    ### check to see if they entered a higher rank thank notfound; if so, fill higher taxonomy
+    ### note:  the taxonomy from biocode_species overwrites any higher terms that were input!
+
+    @taxon_levels = qw(subtribe tribe subfamily family superfamily suborder ordr subclass class);
+
+    $higher_tax{'genus'} = "subtribe,tribe,subfamily,family,superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'subtribe'} = "tribe,subfamily,family,superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'tribe'} = "subfamily,family,superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'subfamily'} = "family,superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'family'} = "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'superfamily'} = "infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'infraorder'} = "suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'suborder'} = "ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'ordr'} = "superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'superorder'} = "infraclass,subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'infraclass'} = "subclass,class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'subclass'} = "class,superclass,subphylum,phylum,kingdom";
+    $higher_tax{'class'} = "superclass,subphylum,phylum,kingdom";
+    $higher_tax{'superclass'} = "subphylum,phylum,kingdom";
+
+    if ($notfound) {  # this will be the lowest rank entered
+	foreach $g (@taxon_levels) {
+	    if (${$g} && $g ne $notfound) {  # don't try notfound 
+		push (@try,$g);
+	    }
+        }
+        $debug_msg .= "<li>try: @try<br>\n";
+
+        foreach $t (@try) {
+	    $t_val = ${$t};
+	    $query = "select distinct $higher_tax{$t} from biocode_species where $t = '$t_val'";
+	    $debug_msg .= "<li>$t :: $query\n";
+            (@row) = &get_one_record($query);
+            if (@row) { # if any values were found
+		$debug_msg .= "<p><li>got results: @row\n";
+		$count = 0;
+		@tax = split(/\,/,$higher_tax{$t});
+		$debug_msg .= "<li>tax: @tax\n";
+		foreach $el (@tax) {
+		    ${$el} = $row[$count++];
+		    $debug_msg .= "<li><b>$el</b> :: ${$el}\n";
+		}
+	    } else {
+		$debug_msg .= "<p><li>no results: @row<p>\n";
+	    }
+	}
+    }
+}
+
+
+sub get_orig_names {
+    my ($seq_num) = @_;
+    my $query;
+    my @fields;
+    my @fields_shortlist;
+    my $fieldname;
+    $biocode_update_where = "";
+
+    $query = "select Kingdom, Phylum, Subphylum, Superclass, Class, Subclass, Infraclass, Superorder, Ordr, Suborder, Infraorder, Superfamily, Family, Subfamily, Tribe, Subtribe, Genus, Subgenus, Species, Subspecies from biocode_species where seq_num = $seq_num";
+    ($orig_Kingdom,$orig_Phylum,$orig_Subphylum,$orig_Superclass,$orig_Class,$orig_Subclass,$orig_Infraclass,$orig_Superorder,$orig_Ordr,$orig_Suborder,$orig_Infraorder,$orig_Superfamily,$orig_Family,$orig_Subfamily,$orig_Tribe,$orig_Subtribe,$orig_Genus,$orig_Subgenus,$orig_SpecificEpithet,$orig_SubSpecificEpithet) = &get_one_record($query);
+
+    @fields = qw(orig_Kingdom orig_Phylum orig_Subphylum orig_Superclass orig_Class orig_Subclass orig_Infraclass orig_Superorder orig_Ordr orig_Suborder orig_Infraorder orig_Superfamily orig_Family orig_Subfamily orig_Tribe orig_Subtribe orig_Genus orig_Subgenus orig_SpecificEpithet orig_SubspecificEpithet);
+
+    @fields_shortlist = qw(orig_Genus orig_SpecificEpithet orig_SubspecificEpithet);
+
+    if($orig_Genus && $orig_SpecificEpithet && $orig_Genus !~ /undetermined/i)  {
+        foreach $f (@fields_shortlist) {
+            $fieldname = $f;
+            $fieldname =~ s/orig_//g;
+            if(${$f}) {
+                ${$f} = " $fieldname = '${$f}' and ";
+            } else {
+                ${$f} = " $fieldname is NULL and ";
+            }
+            $biocode_update_where .=  " ${$f} ";
+        }
+    } else {
+        foreach $f (@fields) {
+            $fieldname = $f;
+            $fieldname =~ s/orig_//g;
+            if(${$f}) {
+                ${$f} = " $fieldname = '${$f}' and ";
+            } else {
+                ${$f} = " $fieldname is NULL and ";
+            }
+            $biocode_update_where .=  " ${$f} ";
+        }
+    }
+    # trying to fix Nov 2007 bug where undetermined species updated are wiping out all taxonomy in specimen table
+    #print "Content-type: text/html\n\n";   
+    #print "$biocode_update_where";
+    #exit;
+
+    $biocode_update_where =~ s/and\s*$//g;  # remove last and
+
+}

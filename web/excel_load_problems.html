@@ -1,0 +1,123 @@
+<html>
+<body>
+
+
+<pre>
+
+April 2007
+
+Issues with loading biocode data from Excel files: 
+
+biocode table:
+--------------
+
+need to put 0 in seq_num field
+need to put 0 in tissues field
+fill out ScientificName field (concatenate genus, species, subspecies. eventually remove this field altogether?)
+fill out InstitutionCode with MBIO
+fill out CatalogNumberNumeric (with numeric part of bnhm_id)
+have to fill in EnteredBy (ie, Chris Meyer)
+have to fill in DateFirstEntered (ie, 2006-10-19  --  date format is important)
+have to fill in Collector_List field (concatenated collectors)
+
+higher taxonomy is missing
+not all names are in the biocode_species table; have to write a script to find these
+
+fields from collecting_event are missing; have to write script to add (and make sure not to overwrite values that DO exist)
+  for above: wrote 2 scripts; one deals with collectors separately as they are a different problem
+  /home/joyceg/tmp7        <- have to move from here
+ 
+
+"" around fields -- had to run sql to fix
+
+
+
+biocode_species table:
+----------------------
+
+new names aren't listed here
+
+I added about 50 species by hand (took 1/2 an hour and was faster than writing a script)
+Chris has to add another 50 species by hand
+
+
+
+biocode_tissue table:
+---------------------
+
+first try:
+
+tissue file arrived as a .txt with pc-style line breaks; had to run a sed command to fix:
+sed -e 's/\r/\n/g' tissue_upload.txt > new_tissue_upload.txt
+
+loaded one tissue record, got 4 warnings:
+
+mysql> source load.sql;
+Query OK, 1 row affected, 4 warnings (0.08 sec)
+Records: 1  Deleted: 0  Skipped: 0  Warnings: 4
+
+mysql> show warnings;
++---------+------+---------------------------------------------------------------------------+
+| Level   | Code | Message                                                                   |
++---------+------+---------------------------------------------------------------------------+
+| Warning | 1265 | Data truncated for column 'tissue_num' at row 1                           |
+| Warning | 1265 | Data truncated for column 'year' at row 1                                 |
+| Warning | 1264 | Data truncated; out of range for column 'month' at row 1                  |
+| Warning | 1262 | Row 1 was truncated; it contained more data than there were input columns |
++---------+------+---------------------------------------------------------------------------+
+4 rows in set (0.00 sec)
+
+
+second try:
+
+run sed again to get line breaks
+
+date is in wrong format. needs to be like this: 2006-03-12
+ran this to fix since all the dates were the same:
+sed -e 's/10\/17\/06/2006-10-17/g' tissues.txt > tissues_fixed.txt
+
+
+data in now:
+
+"" around fields -- had to run sql to fix
+
+
+new tissuetypes not in table (and not in pull-down lists) -- have to add 
+  after removing "", or are we doing away with the tissue type table?
+
+have to add "Sampled by"
+
+</pre>
+<p>
+<hr>
+<p>
+
+<pre>
+2007-04-06 insect data
+
+add: seq_num, CatalogNumberNumeric, bnhm_id
+DateFirstEntered is 2007-10-17  (??) -- changed to 2007-04-06 (or should it be 2006-10-17?)
+
+======================================================================
+
+
+April 2008
+
+Issues with loading biocode data from Excel file: 
+
+
+double quotes (around some text fields from Excel; used sed to get rid of them)
+lat/longs with too many integers after the decimal point
+one decimallatitude field had this in it: #VALUE!
+IndividualCount empty in many (most?) cases
+3 collectors names in database but spelled differently
+taxonomy: wrong higher taxonomy in specimen record
+taxonomy: missing higher taxonomy in species record
+lifestage: values that aren't from our list of accepted values
+sex/caste: values that aren't from our list of accepted values
+
+</pre>
+
+
+</body>
+</html>

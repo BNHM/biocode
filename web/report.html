@@ -1,0 +1,112 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+	<title>Biocode Reports</title>
+	<script type="text/javascript" src="js/ejschart-developer_2_1/dist/EJSChart.js"></script>
+</head>
+
+<body>
+
+<!--<div id="Species Accumulation per Event PLANTS" style="width:600px; height:200px;"></div>
+<div id="Species Accumulation per Event FUNGI" style="width:600px; height:200px;"></div>
+<div id="Species Accumulation per Event TINV" style="width:600px; height:200px;"></div>
+<div id="Species Accumulation per Event TVERTS" style="width:600px; height:200px;"></div>
+<div id="Species Accumulation per Event MVERTS" style="width:600px; height:200px;"></div>
+<div id="Species Accumulation per Event MINV" style="width:600px; height:200px;"></div>
+<div id="newUniqueSpeciesPerEventALGAE" style="width:600px; height:200px;"></div>
+<div id="speciesPerEventALGAE" style="width:600px; height:200px;"></div>
+<div id="specimensPerEventALGAE" style="width:600px; height:200px;"></div>-->
+<div id="ALGAE" style="width:600px; height:200px;"></div>
+<div id="MINV" style="width:600px; height:200px;"></div>
+<div id="TINV" style="width:600px; height:200px;"></div>
+<div id="MVERTS" style="width:600px; height:200px;"></div>
+<div id="TVERTS" style="width:600px; height:200px;"></div>
+<div id="FUNGI" style="width:600px; height:200px;"></div>
+<div id="PLANTS" style="width:600px; height:200px;"></div>
+<div id="species_per_taxteam" style="width:600px; height:200px;"></div>
+<div id="specimens_per_taxteam" style="width:600px; height:200px;"></div>
+<div id="specimens_with_photos_per_taxteam" style="width:600px; height:200px;"></div>
+<div id="passedsequence_per_taxteam" style="width:600px; height:200px;"></div>
+<div id="extractions_per_taxteam" style="width:600px; height:200px;"></div>
+<div id="pcr_per_taxteam" style="width:600px; height:200px;"></div>
+<div id="events_per_taxteam" style="width:600px; height:200px;"></div>
+<div id="specimens_with_tissues_per_taxteam" style="width:600px; height:200px;"></div>
+
+
+<script>
+
+//newUniqueSpeciesPerEvent speciesPerEvent specimensPerEvent
+drawAccumulation(newAccumulationChart("ALGAE"),"ALGAE");
+drawAccumulation(newAccumulationChart("MINV"), "MINV");
+drawAccumulation(newAccumulationChart("TINV"), "TINV");
+drawAccumulation(newAccumulationChart("MVERTS"), "MVERTS");
+drawAccumulation(newAccumulationChart("TVERTS"), "TVERTS");
+drawAccumulation(newAccumulationChart("FUNGI"), "FUNGI");
+drawAccumulation(newAccumulationChart("PLANTS"), "PLANTS");
+//drawAreaEventChart(newAreaEventChart("newUniqueSpeciesPerEventALGAE"),"/cgi/biocode_report?taxteam=ALGAE&query=newUniqueSpeciesPerEvent&json=true");
+//drawAreaEventChart(newAreaEventChart("speciesPerEventALGAE"),"/cgi/biocode_report?taxteam=ALGAE&query=speciesPerEvent&json=true");
+//drawAreaEventChart(newAreaEventChart("specimensPerEventALGAE"),"/cgi/biocode_report?taxteam=ALGAE&query=specimensPerEvent&json=true");
+//drawAreaEventChart(newAreaEventChart("newUniqueSpeciesPerEvent PLANTS"),"/cgi/biocode_report?taxteam=PLANTS&query=species%2Fevent&json=true");
+//drawAreaEventChart(newAreaEventChart("Species Accumulation per Event FUNGI"),"/cgi/biocode_report?taxteam=FUNGI&query=species%2Fevent&json=true");
+//drawAreaEventChart(newAreaEventChart("Species Accumulation per Event TINV"),"/cgi/biocode_report?taxteam=TINV&query=species%2Fevent&json=true");
+//drawAreaEventChart(newAreaEventChart("Species Accumulation per Event MVERTS"),"/cgi/biocode_report?taxteam=MVERTS&query=species%2Fevent&json=true");
+//drawAreaEventChart(newAreaEventChart("Species Accumulation per Event TVERTS"),"/cgi/biocode_report?taxteam=TVERTS&query=species%2Fevent&json=true");
+//drawAreaEventChart(newAreaEventChart("Species Accumulation per Event MINV"),"/cgi/biocode_report?taxteam=MINV&query=species%2Fevent&json=true");
+//drawAreaEventChart(newAreaEventChart("Species Accumulation per Event ALGAE"),"/cgi/biocode_report?taxteam=ALGAE&query=species%2Fevent&json=true");
+drawChart(newChart("species_per_taxteam"),"/cgi/biocode_report?query=species_per_taxteam&species_per_taxteam&json=true");
+drawChart(newChart("specimens_per_taxteam"),"/cgi/biocode_report?&query=specimens_per_taxteam&json=true");
+drawChart(newChart("specimens_with_photos_per_taxteam"),"/cgi/biocode_report?query=specimens_with_photos_per_taxteam&json=true");
+drawChart(newChart("passedsequence_per_taxteam"),"/cgi/biocode_report?query=passedsequence_per_taxteam&json=true");
+drawChart(newChart("extractions_per_taxteam"),"/cgi/biocode_report?query=extractions_per_taxteam&json=true");
+drawChart(newChart("pcr_per_taxteam"),"/cgi/biocode_report?query=pcr_per_taxteam&json=true");
+drawChart(newChart("events_per_taxteam"),"/cgi/biocode_report?query=events_per_taxteam&json=true");
+drawChart(newChart("specimens_with_tissues_per_taxteam"),"/cgi/biocode_report?query=specimens_with_tissues_per_taxteam&json=true");
+
+
+function newAccumulationChart(a) {
+	var chart = new EJSC.Chart( a , { title: a , show_legend: true,
+			axis_bottom: { caption: "Index", crosshair: { show: false} } ,
+ 			axis_left: { crosshair: { show: false}, caption: "Total", zero_plane: { show: true, color: 'rgb(0,0,0)' , thickness: 1 }
+		}
+     });
+	return chart;
+}
+function drawAccumulation(a,t) {
+    var b="/cgi/biocode_report?taxteam="+t+"&query=newUniqueSpeciesPerEvent&json=true";
+    var c="/cgi/biocode_report?taxteam="+t+"&query=speciesPerEvent&json=true";
+    var d="/cgi/biocode_report?taxteam="+t+"&query=specimensPerEvent&json=true";
+    var myChart5Series = a.addSeries( new EJSC.LineSeries( new EJSC.JSONFileDataHandler(b) , { color: 'rgb(255,48,48)',title: "UniqueSpeciesPerEvent" }))
+     myChart5Series = a.addSeries( new EJSC.LineSeries( new EJSC.JSONFileDataHandler(c) , { color: 'rgb(48,255,48)',title: "speciesPerEvent" }))
+     myChart5Series = a.addSeries( new EJSC.LineSeries( new EJSC.JSONFileDataHandler(d) , { color: 'rgb(48,48,255)',title: "specimensPerEvent" }))
+}
+function newAreaEventChart(a) {
+	var chart = new EJSC.Chart( a , { title: a ,
+        show_legend: false,
+			axis_bottom: { caption: "Events", crosshair: { show: false} } ,
+ 			axis_left: { caption: "Number", zero_plane: { show: true, color: 'rgb(0,0,0)' , thickness: 1 }}
+     });
+	return chart;
+}
+function drawAreaEventChart(a,b) {
+    var myChart5Series = a.addSeries( new EJSC.AreaSeries( new EJSC.JSONFileDataHandler(b) , { }));
+}
+function newChart(a) {
+	var chart = new EJSC.Chart( a , { title: a , show_legend: false,
+			axis_bottom: { caption: "TaxTeam", crosshair: { show: false} } ,
+ 			axis_left: { crosshair: { show: false}, caption: "Number", zero_plane: { show: true, color: 'rgb(0,0,0)' , thickness: 1 }
+		}
+     });
+	return chart;
+}
+      
+
+function drawChart(a,b) {
+    var myChart5Series = a.addSeries( new EJSC.BarSeries( new EJSC.JSONFileDataHandler(b) , {
+      	color: 'rgb(255,48,48)'
+     }))
+}
+
+</script>
+</body>
+
+</html>

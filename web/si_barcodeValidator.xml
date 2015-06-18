@@ -1,0 +1,116 @@
+<?xml version='1.0' encoding='ISO-8859-1'?>
+<Validate xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'
+    xsi:noNamespaceSchemaLocation='si_barcodeValidator.xsd'>
+
+<Metadata>
+
+<metadata name='displayFieldsSpreadsheet'>
+<field>Tree Tag No./ Accession No</field>
+<field>Sample Number</field>
+<field>Genus</field>
+<field>Species</field>
+</metadata>
+
+<metadata name='displayFieldsDB'>
+<field>specimen_num_collector</field>
+<field>Tree Tag No./ Accession No</field>
+<field>Sample Number</field>
+<field>Genus</field>
+<field>Species</field>
+</metadata>
+
+</Metadata>
+
+<Collection_Data_Intake type='Worksheet'>
+
+<rule type="uniqueValue" name="Tree Tag No./ Accession No" level="warning"></rule>
+
+<rule type='checkInXMLFields' name='Voucher Specimen?' level='warning'>
+<field>Y</field>
+<field>N</field>
+</rule>
+
+<rule type='checkInXMLFields' name='Cultivated?' level='warning'>
+<field>Y</field>
+<field>N</field>
+</rule>
+
+<!--<rule type='checkInXMLFields' name='Habit' level='warning'> </rule>-->
+<rule type='checkInXMLFields' name='Tissue Type' level='warning'>
+<field>Leaf</field>
+<field>Fruit</field>
+<field>Seed</field>
+<field>Root</field>
+<field>Bark</field>
+<field>Cambium</field>
+<field>Other</field>
+</rule>
+
+<rule type='checkInXMLFields' name='Locality' level='warning'>
+<field>Amacayacu</field>
+<field>Brunei</field>
+<field>Bukit Timah</field>
+<field>Changbaishan</field>
+<field>Chesapeake (SERC)</field>
+<field>Dinghushan</field>
+<field>Doi Inthanon</field>
+<field>French Guiana</field>
+<field>Front Royal (CRC)</field>
+<field>Fushan</field>
+<field>Gutianshan</field>
+<field>Haliburton Forest</field>
+<field>Harvard Forest</field>
+<field>Hawaii</field>
+<field>Hong Kong</field>
+<field>Huai Kha Khaeng</field>
+<field>Ilha do Cardosa</field>
+<field>Ituri</field>
+<field>JimDukeFarmacy</field>
+<field>Khao Chong</field>
+<field>Korup</field>
+<field>La Planada</field>
+<field>Lambir</field>
+<field>Lienhuachih</field>
+<field>Luquillo</field>
+<field>Madagascar</field>
+<field>Manaus</field>
+<field>Mo Singto</field>
+<field>Mudumalai</field>
+<field>Nanjenshan</field>
+<field>Orchid Island</field>
+<field>Palanan</field>
+<field>Pasoh</field>
+<field>Plummers Island</field>
+<field>Sinharaja</field>
+<field>Tiantong</field>
+<field>USDA</field>
+<field>Wabikon Lake</field>
+<field>Wanang</field>
+<field>Wind River</field>
+<field>Wytham Woods</field>
+<field>Xishuangbanna</field>
+<field>Yasuni</field>
+<field>Yosemite</field>
+</rule>
+
+<rule type='RequiredColumns' name='RequiredColumns' level='error'>
+<field>Tree Tag No./ Accession No.</field>
+<field>Sample Number</field>
+<field>Genus</field>
+<field>Species</field>
+<field>Author</field>
+<field>Family</field>
+<field>Collector Number</field>
+<field>Collector (Team)</field>
+<field>Collection Date</field>
+<field>Voucher Specimen?</field>
+<field>Plate No.</field>
+<field>Row Letter</field>
+<field>Column No.</field>
+<field>Tissue Type</field>
+</rule>
+
+</Collection_Data_Intake>
+
+</Validate>
+

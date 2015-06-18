@@ -1,0 +1,49 @@
+<?xml version='1.0' encoding='ISO-8859-1'?>
+<validationSchemas xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'
+    xsi:noNamespaceSchemaLocation='validationSchemas.xsd'>
+    <validationSchema name='biocodeValidator-0.7.xml'
+            url='http://biocode.berkeley.edu/biocodeValidator-0.8.xml'
+			XSDName='bioValidator-0.7.xsd'
+			XSDUrl='http://biocode.berkeley.edu/bioValidator-0.8.xsd'
+            contact_name='John Deck'
+            contact_email='jdeck@berkeley.edu'
+            contact_phone='1-541-914-4739'
+        	description='This is the validation schema location for the Moorea Biocode Project'>
+    </validationSchema>
+    <validationSchema name='mosquitoValidator.xml'
+            url='http://biocode.berkeley.edu/mosquitoValidator-0.8.xml'
+			XSDName='bioValidator-0.7.xsd'
+			XSDUrl='http://biocode.berkeley.edu/mosquitoValidator-0.8.xsd'
+            contact_name='Desmond Foley'
+            contact_email='FoleyDes@si.edu'
+            contact_phone='???'
+        	description=''>
+    </validationSchema>
+    <validationSchema name='SI Barcode Validator'
+            url='http://biocode.berkeley.edu/si_barcodeValidator-0.8.xml'
+			XSDName='bioValidator-0.7.xsd'
+			XSDUrl='http://biocode.berkeley.edu/si_barcodeValidator-0.8.xsd'
+            contact_name='Jamie Whitacre'
+            contact_email='WHITACREJ@si.edu'
+            contact_phone='1-xxx-xxx-xxxx'
+        	description='SI Barcode Validator'>
+    </validationSchema>
+    <validationSchema name='BOLD Spreadsheet Validator'
+            url='http://biocode.berkeley.edu/BOLDValidator-0.8.xml'
+			XSDName='bioValidator-0.7.xsd'
+			XSDUrl='http://biocode.berkeley.edu/BOLDValidator-0.8.xsd'
+            contact_name='John Deck'
+            contact_email='jdeck@berkeley.edu'
+            contact_phone='1-541-914-4793'
+        	description='BOLD Spreadsheet Validator'>
+    </validationSchema>
+    <validationSchema name='Ocean Sampling Day Validator'
+            url='http://biocode.berkeley.edu/OSD-0.8.xml'
+			XSDName='bioValidator-0.7.xsd'
+			XSDUrl='http://biocode.berkeley.edu/OSD-0.8.xsd'
+            contact_name='John Deck'
+            contact_email='jdeck@berkeley.edu'
+            contact_phone='1-541-914-4793'
+        	description='Ocean Sampling Day Validator'>
+    </validationSchema>
+</validationSchemas>

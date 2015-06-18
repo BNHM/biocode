@@ -1,0 +1,828 @@
+#!/usr/bin/perl
+
+# biocode_add_collect_event
+# Ginger Ogle 1/7/04 for MySQL
+
+
+# $DEBUG=1;
+
+require "utils.p";
+require "myquery_utils.p";
+require "myschema.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+## uncomment for system crashes
+#$CRASH = 1;  ## queries will just exit out of readParse
+#$crash_date = "Tue Apr 21 18:30:54 PDT 2009";
+
+
+$help_win_link = "<a href=\"javascript:Help_Window('/cgi/biocode_help?page";
+ &readParse(*input) || print "    <p>No input data processed.<p>\n";
+
+####
+# new record vs. update
+####
+if  ($input{'mode'} eq "update") {
+    $its_an_update = 1;
+    $heading = "Moorea Biocode: Update a Collecting Event";
+    $form_bg_color = $lt_sage_color;
+
+} elsif ($input{'mode'} eq "clearform") {
+    $coming_from_clear_form = 1;
+    $heading = "Moorea Biocode: Add a New Collecting Event";
+    $form_bg_color = $lt_bluegray_color;
+
+} else {
+    $heading = "Moorea Biocode: Add a New Collecting Event";
+    $form_bg_color = $lt_bluegray_color;
+}
+
+#######################################
+# step 2 ready to load it - check input
+#######################################
+
+if ($input{'special'} eq "load") {
+
+    ## first check to see if we're coming from a Clear Form 
+    ## where only a Mandala number was entered
+
+    if ($input{'mode'} eq "clearform") {
+
+	if ($input{OtherEventID}) {  # Mandala number?
+	    if ($input{OtherEventID} =~ /^(FJ)(\w\w)(.*)\_(\w)(.*)\_(.*)$/) {
+		$input{ContinentOcean} = "Pacific Ocean";
+		$input{Country} = "Fiji";
+		$input{IslandGroup} = "Fiji Islands";
+		$input{Island} = $mandala_island_codes{$2};
+		$input{ProjectCode} = "Fiji Arthropod Survey";
+		$input{OtherEventInst} = "Mandala";
+		$input{Collection_Method} = "$mandala_method_codes{$4} $5" ;
+		$input{GetNextMandalaNumber} = 1;   # prevents carryforward
+
+	    } else {
+		$bad_msg .= "<dd><li><b>Mandala code isn't in this format: FJVL59e_M04_06";
+	    }
+	}
+    }
+
+    &check_input;
+
+    if ($bad_msg) {
+	&print_biocode_form_header($heading, $form_bg_color);
+	&print_form;
+	&print_biocode_form_footer;
+
+    } elsif ($input{'mode'} eq "update") {
+	&update_record;
+	&send_email;
+	&print_biocode_form_header($heading, $form_bg_color);
+	print "<b>Event ID \# $input{EventID} was successfully updated</b>\n";
+	print "<a target=new ";
+	print "href=/cgi/biocode_collect_event_query?EventID=$input{EventID}&one=T>click here</a> to view it\n";
+	## need firstscreen?
+	print "<FORM name=parentform ACTION=\"/cgi/biocode_add_collect_event\" METHOD=\"post\">";
+	print "<p>Update another record: <INPUT type=hidden name=mode value=update>";
+	print "<INPUT type=hidden name=entry_by value=\"$input{entry_by}\">";
+	print "<INPUT type=hidden name=ProjectCode value=\"$input{ProjectCode}\">";
+	# print "<INPUT type=hidden name=batch_id value=\"$input{batch_id}\">";
+	print "<INPUT name=EventID> <INPUT TYPE=\"submit\" VALUE=\"Go\">";
+	print "</form>";
+	&print_biocode_form_footer;
+
+    
+    } else {
+        &load_record;
+        &send_email;
+	&print_biocode_form_header($heading, $form_bg_color);
+	print "<b>Event ID \# $input{EventID} was loaded successfully</b>\n";
+	print "<small><a target=new ";
+	print "href=/cgi/biocode_collect_event_query?EventID=$input{EventID}&one=T>";
+	print "click here to view it</a></small>\n";
+	&print_clear_form_button;
+
+	if ($DEBUG) {print $loadfile_for_debug;}
+
+	## increment EventID for the next record
+	$input{EventID}++;
+	local($exists) = &check_if_EventID_exists($input{EventID});  # mybiocode_utils.p
+	if ($exists) {
+	    $input{EventID} = &get_max_Eventid("biocode_collecting_event");
+	    $cmts .= "<li>Sorry, the next event ID number already exists; using max+1 number\n";
+	}
+	if ($cmts) {
+	    print "<br><b>Processing notes</b><br>$cmts\n";
+	}
+	print "<hr>\n";
+        &print_form;
+        &print_biocode_form_footer;
+    }
+    exit;
+
+######################################################
+# step 1 print the form (if nec, first check password)
+######################################################
+} else {
+    $fresh_record = 1;  # for some initial values
+
+    if ($input{'special'} eq "firstscreen") {  ## check the password
+
+	if ($its_an_update) {
+	    $cat_id_OK = &check_incoming_event_id($input{EventID});
+	}
+	$passwd_OK = &check_biocode_name_and_password($input{entry_by},$input{password});
+	
+	if (!$passwd_OK || ($its_an_update && !$cat_id_OK)) {
+	    &print_biocode_err_and_exit;
+	} else {
+	    &print_biocode_form_header($heading, $form_bg_color);
+	    &print_form;
+	    &print_biocode_form_footer;
+	    exit;
+	}
+
+    } elsif ($its_an_update) {  # second or later update - password already OK
+	$cat_id_OK = &check_incoming_event_id($input{EventID});
+	&print_biocode_form_header($heading, $form_bg_color);
+        &print_form;
+        &print_biocode_form_footer;
+        exit;
+
+    } else {   # don't need a password
+        &print_biocode_form_header($heading, $form_bg_color);
+        &print_form;
+        &print_biocode_form_footer;
+        exit;
+    }
+}
+
+
+
+sub print_form {
+
+    if ($its_an_update) {
+	if ($bad_msg) {  ## need to re-set the values
+	    foreach $v (@biocode_collecting_event_schema) {
+		${$v} = $input{$v};
+	    }   
+	    $US_State = $input{US_State};
+            $other_stateprovince = $input{other_stateprovince};
+        }
+        ## not bad_msg --  get temp values for this form ...
+        ($US_State,$other_stateprovince) = &get_stateprovince($StateProvince,$Country);
+
+        ## turn collector names into last, first
+        $last_first_coll1 = &make_lastnamefirst($Collector);
+        $last_first_coll2 = &make_lastnamefirst($Collector2);
+        $last_first_coll3 = &make_lastnamefirst($Collector3);
+        $last_first_coll4 = &make_lastnamefirst($Collector4);
+        $last_first_coll5 = &make_lastnamefirst($Collector5);
+        $last_first_coll6 = &make_lastnamefirst($Collector6);
+        $last_first_coll7 = &make_lastnamefirst($Collector7);
+        $last_first_coll8 = &make_lastnamefirst($Collector8);
+
+	
+    } else {
+	### Get values that were entered into form, to re-print them.
+	foreach $v (@biocode_collecting_event_schema) {
+	    ${$v} = $input{$v};
+	# DEBUG # print "$v: $input{$v} ...";
+        }
+        $US_State = $input{US_State};
+        $other_stateprovince = $input{other_stateprovince};
+
+        ## collectors, last name first (for menu)
+        $last_first_coll1 = $input{last_first_coll1};
+        $last_first_coll2 = $input{last_first_coll2};
+        $last_first_coll3 = $input{last_first_coll3};
+        $last_first_coll4 = $input{last_first_coll4};
+        $last_first_coll5 = $input{last_first_coll5};
+        $last_first_coll6 = $input{last_first_coll6};
+        $last_first_coll7 = $input{last_first_coll7};
+        $last_first_coll8 = $input{last_first_coll8};
+    }
+    if ($bad_msg) {
+	print "<font color=red><b>";
+	print "Errors found - please correct and submit again...</b></font>\n";
+        print "<small>Problems? email <a href=mailto:bscit\@berkeley.edu?subject=biocode_add_collect_event>bscit\@berkeley.edu</a></small>";
+
+	&print_clear_form_button;
+	print "<small>$bad_msg</small>\n";
+	if ($cmts) {
+	    print "<br><small><font color=green>Comments</font><br>$cmts</small>\n";
+	}
+	print "<hr>\n";
+
+    } elsif ($input{carryforward}) {
+	$carryforward = $input{carryforward};
+
+	## delete fields we don't want in carryover
+	$IndividualCount = "";
+
+
+    } elsif ($fresh_record) {
+	if ($its_an_update) {
+	    ## use stuff from the record
+	} else {
+	    ## get some initial values
+	    $EventID = &get_max_Eventid("biocode_collecting_event");
+	}
+    } else {	## just do the usual
+    }
+
+    print "<form name=parentform action=/cgi/biocode_add_collect_event method=get>\n";
+
+    # column 1
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td valign=top>\n";
+    &print_codes_and_nums;
+    &print_ind_count;
+    &print_collector_info;
+    &print_event_info;
+    print "</td>\n";
+
+    # column 2
+    print "<td valign=top>\n";
+    print "<table>\n";
+    &print_locations;  # mybiocode_utils.p Cont->County Habitat etc.
+    print "</table>\n";
+    &print_elev_depth;
+    &print_lat_long;
+
+    &print_submit_button;
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+    print "</form>\n";
+}
+
+
+sub print_codes_and_nums {
+
+    # EventID OtherEventID ProjectCode HoldingInstitution
+    # OtherEventID2 TaxTeam
+    
+    print "<table>\n";
+
+    # EventID
+    print "<tr>\n";
+    print "<td align=left>";print "$help_win_link=EventID')\">Event ID Num";
+    print "</a></td>\n";
+    print "<td align=left><input type=hidden name=EventID value=\"$EventID\">";
+    print "$EventID";
+    print "</td>\n";
+    print "<td>&nbsp;&nbsp;</td>\n";
+    
+    # entered by, date
+    if ($its_an_update) {
+	## don't print these out, but carry them forward
+	print "<input type=hidden name=DateFirstEntered value=\"$DateFirstEntered\">\n";
+        print "<input type=hidden name=EnteredBy value=\"$EnteredBy\">\n";
+
+
+	print "<td align=left>$help_win_link=ModifiedBy')\">Modified By\n";
+        print "</a></td>\n";
+        print "<td align=left><input type=hidden name=ModifiedBy value=\"$input{entry_by}\">\n";
+	print "<INPUT type=hidden name=batch_id value=\"$batch_id\">";
+        print "$input{entry_by}\n";
+        print "&nbsp;&nbsp;\n";
+        print "<input type=hidden name=DateLastModified ";
+	print "value=\"$MSQL_DATETIME\">$MSQL_DATETIME\n";
+        print "</td>\n";
+
+    } else {  ## new record
+
+        print "<td align=left>$help_win_link=EnteredBy')\">Entered By\n";
+        print "</a></td>\n";
+        print "<td align=left><input type=hidden name=EnteredBy value=\"$input{entry_by}\">\n";
+        print "$input{entry_by}\n";
+	print "&nbsp;&nbsp;\n";
+        print "<input type=hidden name=DateFirstEntered value=\"$MSQL_DATETIME\">$MSQL_DATETIME\n";
+	print "</td>\n";
+
+    }
+    print "</tr>\n";
+    print "</table>\n";
+
+    print "<table>\n";
+
+
+    # HoldingInstitution
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=HoldingInstitution')\">Institution";
+    print "</a></td>\n";
+    print "<td align=left><input ";
+    if (!$HoldingInstitution) {
+        $HoldingInstitution = "Moorea Biocode";
+    } 
+    print " class=yellbg size=40 name=HoldingInstitution value=\"$HoldingInstitution\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    # Project Name
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=ProjectCode')\">Project Code";
+    print "</a></td>\n";
+    print "<td align=left><input ";
+    if ($ProjectCode) {
+        print " class=yellbg ";
+    }
+    print "size=40 name=ProjectCode value=\"$ProjectCode\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    #&print_collectors_id;  # mybiocode_utils.p
+    # Collector's EventID
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=Coll_EventID_Collector')\">Collector's Event ID";
+    print "</a></td>\n";
+    print "<td align=left><input ";
+    if ($Coll_EventID_collector) {
+        print " class=yellbg ";
+    }
+    print "size=20 name=Coll_EventID_collector value=\"$Coll_EventID_collector\">\n";
+    print "<i>GP-Loc-862</i>";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    # OtherEventID
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=OtherEventID')\">Other Event ID 1";
+    print "</a></td>\n";
+    print "<td align=left><input ";
+    if ($OtherEventID) {
+        print " class=yellbg ";
+    }
+    print "size=20 name=OtherEventID value=\"$OtherEventID\">\n";
+    print "<i>FJVL59e_M04_06</i>";
+    print "</td>\n";
+    print "</tr>\n";
+
+    # OtherEventID2
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=OtherEventID2')\">Other Event ID 2";
+    print "</a></td>\n";
+    print "<td align=left><input ";
+    if ($OtherEventID2) {
+        print " class=yellbg ";
+    }
+    print "size=20 name=OtherEventID2 value=\"$OtherEventID2\">\n";
+    print "<i>FBA007728</i>";
+    print "</td>\n";
+    print "</tr>\n";
+
+    # TaxTeam
+
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=TaxTeam')\">Tax Team";
+    print "</a></td>\n";
+    print "<td align=left>\n";
+    print "<select size=1  name=TaxTeam ";
+    if ($TaxTeam) { print " class=yellbg "; }
+    print ">\n";
+    &print_TaxTeam_options($TaxTeam);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+
+
+
+
+    # OtherEventInst
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=OtherEventInst')\">Other ID Source";
+    print "</a></td>\n";
+    print "<td align=left><input ";
+    if ($OtherEventInst) {
+        print " class=yellbg ";
+    }
+    print "size=20 name=OtherEventInst value=\"$OtherEventInst\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "</table>\n";
+
+}
+
+sub print_collector_info {
+
+    print "<br>\n";
+    print "<table>\n";
+    &print_eight_collector_options;  # mybiocode_utils.p
+    print "</table><br>\n";
+    print "<table>\n";
+    &print_collection_date_options;  # mybiocode_utils.p
+#    &print_collectors_id;  # mybiocode_utils.p
+    print "</table>\n";
+
+}
+
+sub print_ind_count {
+
+    # IndividualCount 
+
+    print "<br>\n";
+    print "<table>\n";
+
+    # IndividualCount 
+    print "<tr>\n";
+    print "<td align=left>$help_win_link=IndividualCount')\">Individual Count";
+    print "</a>\n";
+    print "<input ";
+    if ($IndividualCount) {  print " class=yellbg "; }
+    print "size=10 name=IndividualCount value=\"$IndividualCount\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+
+}
+
+sub print_event_info {
+
+    # Collection_Method Landowner Permit_Info Remarks
+
+    print "<br>\n";
+    print "<table>\n";
+
+    # Collection_Method
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Collection_Method')\">Coll. Method</a></td>\n";
+    print "<td align=left><input size=40 ";
+    if ($Collection_Method) {  
+	print " class=yellbg "; 
+    }
+    print "name=Collection_Method value=\"$Collection_Method\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+   # Landowner
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Landowner')\">Landowner</a></td>\n";
+    print "<td align=left><input size=40 name=Landowner value=\"$Landowner\"";
+    if ($Landowner) { print " class=yellbg"; }
+    print ">";
+    print "</td>\n";
+    print "</tr>\n";
+
+   # Permit_Info
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Permit_Info')\">Permit Info</a></td>\n";
+    print "<td align=left><input size=40 name=Permit_Info value=\"$Permit_Info\"";
+    if ($Permit_Info) { print " class=yellbg"; }
+    print ">";
+    print "</td>\n";
+    print "</tr>\n";
+
+   # Disposition
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Disposition')\">Disposition</a></td>\n";
+    print "<td align=left><input size=40 name=Disposition value=\"$Disposition\"";
+    if ($Disposition) { print " class=yellbg"; }
+    print ">";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+
+    # Remarks
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Remarks')\">Remarks</a></td>\n";
+    print "<td><textarea wrap=hard name=Remarks cols=30 rows=2";
+    if ($Remarks) { print " class=yellbg"; }
+    print ">$Remarks</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td colspan=2>\n";
+    &print_taxonNotes;
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+
+}
+
+
+sub print_elev_depth {
+
+    # MinElevationMeters MaxElevationMeters MinDepthMeters MaxDepthMeters
+
+    print "<br>\n";
+    print "<table>\n";
+
+    print "<tr>\n";
+    print "<td colspan=2 align=left>$help_win_link=Elevation')\">Elevation in Meters</a>:";
+    print "</td>\n";
+
+    print "<td colspan=2>";
+    print "<nobr>";
+    print "&nbsp;&nbsp;";
+    print "<input size=9 name=MinElevationMeters value=\"$MinElevationMeters\"";
+    if ($MinElevationMeters) { print " class=yellbg"; }
+    print "></nobr>\n";
+
+    print "<nobr>to\n";
+    print "<input size=9 name=MaxElevationMeters value=\"$MaxElevationMeters\"";
+    if ($MaxElevationMeters) { print " class=yellbg"; }
+    print ">m</nobr>\n";
+
+    print "<tr>\n";
+    print "<td colspan=2 align=left>$help_win_link=Depth')\">Depth in Meters</a>:";
+    print "</td>\n";
+
+    print "<td colspan=2>";
+    print "<nobr>";
+    print "&nbsp;&nbsp;";
+    print "<input size=9 name=MinDepthMeters value=\"$MinDepthMeters\"";
+    if ($MinDepthMeters) { print " class=yellbg"; }
+    print "></nobr>\n";
+
+    print "<nobr>to\n";
+    print "<input size=9 name=MaxDepthMeters value=\"$MaxDepthMeters\"";
+    if ($MaxDepthMeters) { print " class=yellbg"; }
+    print ">m</nobr>\n";
+
+    print "<tr>\n";
+    print "<td colspan=2 align=left>$help_win_link=DepthofBottom')\">Depth of Bottom in Meters</a>:";
+    print "</td>\n";
+
+    print "<td colspan=2>";
+    print "<nobr>";
+    print "&nbsp;&nbsp;";
+    print "<input size=9 name=DepthOfBottomMeters value=\"$DepthOfBottomMeters\"";
+    if ($DepthOfBottomMeters) { print " class=yellbg"; }
+    print "></nobr>\n";
+
+
+    print "</table>\n";
+
+}
+
+sub print_lat_long {
+
+    # DecimalLongitude DecimalLatitude HorizontalDatum MaxErrorInMeters
+    # VerbatimLatitude VerbatimLongitude
+
+    print "<br>\n";
+    print "<table>\n";
+
+    print "<tr>\n";
+
+    print "<td align=left>$help_win_link=VerbatimLatLon')\">Deg/Min/Sec Lat/Lon</a>:";
+    print "</td>";
+    print "<td>";
+    print "lat\n";
+    print "<input size=20 name=VerbatimLatitude value=\"$VerbatimLatitude\"";
+    if ($VerbatimLatitude) { print " class=yellbg"; }
+    print ">\n";
+    print "</nobr>\n";
+
+    print "&nbsp;";
+    print "<nobr>";
+    print "lon\n";
+    print "<input size=20 name=VerbatimLongitude value=\"$VerbatimLongitude\"";
+    if ($VerbatimLongitude) { print " class=yellbg"; }
+    print ">\n";
+    print "<i>(example: 04 43 00 N)</i>";
+    print "</nobr>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<td align=left>$help_win_link=VerbatimLatLon')\">Deg/Min/Sec Lat/Lon 2</a>:";
+    print "</td>";
+    print "<td>";
+    print "lat\n";
+    print "<input size=20 name=VerbatimLatitude2 value=\"$VerbatimLatitude2\"";
+    if ($VerbatimLatitude2) { print " class=yellbg"; }
+    print ">\n";
+    print "</nobr>\n";
+
+    print "&nbsp;";
+    print "<nobr>";
+    print "lon\n";
+    print "<input size=20 name=VerbatimLongitude2 value=\"$VerbatimLongitude2\"";
+    if ($VerbatimLongitude2) { print " class=yellbg"; }
+    print ">\n";
+    print "<i>(example: 04 43 00 N)</i>";
+    print "</nobr>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td>$help_win_link=DecimalLatLon')\">Decimal Lat/Lon</a>:";
+    print "</td>\n";
+
+    print "<td>";
+    print "<nobr>";
+    print "lat\n";
+    print "<input size=20 name=DecimalLatitude value=\"$DecimalLatitude\"";
+    if ($DecimalLatitude) { print " class=yellbg"; }
+    print ">\n";
+    print "</nobr>\n";
+
+    print "&nbsp;";
+    print "<nobr>";
+    print "lon\n";
+    print "<input size=20 name=DecimalLongitude value=\"$DecimalLongitude\"";
+    if ($DecimalLongitude) { print " class=yellbg"; }
+    print ">\n";
+    print "</nobr>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td>$help_win_link=DecimalLatLon')\">Decimal Lat/Lon 2</a>:";
+    print "</td>\n";
+
+    print "<td>";
+    print "<nobr>";
+    print "lat\n";
+    print "<input size=20 name=DecimalLatitude2 value=\"$DecimalLatitude2\"";
+    if ($DecimalLatitude2) { print " class=yellbg"; }
+    print ">\n";
+    print "</nobr>\n";
+
+    print "&nbsp;";
+    print "<nobr>";
+    print "lon\n";
+    print "<input size=20 name=DecimalLongitude2 value=\"$DecimalLongitude2\"";
+    if ($DecimalLongitude2) { print " class=yellbg"; }
+    print ">\n";
+    print "</nobr>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=MaxErrorInMeters')\">Max Error</a>\n";
+    print "</td>\n";
+    print "<td><input size=17 name=MaxErrorInMeters value=\"$MaxErrorInMeters\"";
+    if ($MaxErrorInMeters) { print " class=yellbg"; }
+    print "> m\n";
+
+    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "$help_win_link=Datum')\">Datum</a>\n";
+    print "<select size=1  name=HorizontalDatum";
+    if ($HorizontalDatum) { print " class=yellbg"; }
+    print ">\n";
+    &print_HorizontalDatum_options($HorizontalDatum);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+
+}
+
+sub print_taxonNotes {
+
+    # TaxonNotes
+    print "<table>";
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=TaxonNotes')\">Taxon&nbsp;Notes</a></td>\n";
+    print "<td align=left><input size=50 name=TaxonNotes value=\"$TaxonNotes\"";
+    if ($TaxonNotes) { print " class=yellbg"; }
+    print ">";
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+}
+
+sub print_submit_button {
+
+    print "<br><br>\n";
+    print "<table width=100%>\n";
+    print "<tr><th>\n";
+    print "<input type=hidden name=special value=load>\n";
+
+    if ($GetNextMandalaNumber) {
+	print "<input type=hidden name=GetNextMandalaNumber value=1>\n";
+    } else {
+	print "<input type=hidden name=carryforward value=1>\n";
+    }
+    if ($coming_from_clear_form) {
+	print "<input type=hidden name=mode value=clearform>\n";
+    }
+
+    print "<input type=hidden name=entry_by value = \"$input{entry_by}\" >\n";
+    if ($its_an_update) {
+        print "<input type=hidden name=mode value=update>\n";
+        print "<input type=submit value=\"Update Record\">\n";
+    } else {
+        print "<input type=submit value=\"Submit Record\">\n";
+    }
+    print "</th>\n";
+    print "</tr>\n";
+    print "</table>\n";
+}
+
+
+sub check_input {  
+
+    ## change 'unselected' to ''
+    foreach $s (@biocode_collecting_event_schema) {
+        if ($input{$s} eq "unselected") {
+            $input{$s} = "";
+        }
+    }
+    if ($input{other_stateprovince} eq "unselected") {
+	$input{other_stateprovince} = "";
+    }
+    if ($input{US_State} eq "unselected") {
+        $input{US_State} = "";
+    }
+    &check_ymd_dates;         # mybiocode_utils.p
+    &check_locality_fields;   # mybiocode_utils.p
+    &check_lat_long_dep_elev; # utils.p
+    &check_five_collectors;
+    # $input{Coll_EventID_collector} = &check_collectors_eventid($input{Coll_EventID_collector},$input{EventID});
+    $input{Coll_EventID_collector} = &check_collectors_eventid($input{Coll_EventID_collector},$input{EnteredBy});
+}
+
+sub load_record {
+
+
+    $loadfile = "";
+    $loadfile_for_debug = "";
+
+    ## make load file
+    foreach $attr (@biocode_collecting_event_schema) {
+	$val = &strip($input{$attr});
+	if (!$val || $val eq "unselected" || $val eq "none") {
+		$val = "\\N";
+        }
+	$loadfile .= "$val|";
+
+	# print field names in orange for debugging
+	$loadfile_for_debug .= "<font color=orange>$attr=</font>|$val| ";
+    }
+    &load_biocode_record($loadfile,"biocode_collecting_event");  # mybiocode_utils.p
+
+}
+
+
+sub update_record {
+    
+    # delete old record, insert new record
+
+    ## first, save old record
+    $save_statement = "insert into biocode_collecting_event_deleted select * from biocode_collecting_event where EventID=\"$input{EventID}\"";
+    &process_query($save_statement, "biocode");
+
+    $del_statement = "delete from biocode_collecting_event where EventID=\"$input{EventID}\"";
+    if ($debugging) {
+        # print "$del_statement<p>";
+    } else {
+        &process_query($del_statement, "biocode");
+	&load_record;
+    }
+
+}
+
+sub send_email {
+
+
+
+    if ($its_an_update) {
+        open(MESSAGE, "| mailx -s \"Moorea Biocode collection event update \" $recipients");
+        print MESSAGE "A collection event ($input{EventID}) ";
+        print MESSAGE "has been updated in ";
+        print MESSAGE "the Moorea Biocode database. \n\n";
+	
+	print MESSAGE "update statement:  \n$upd_specimens\n\n";
+
+
+    } else {
+	open(MESSAGE, "| mailx -s \"Moorea Biocode database new collecting event \" $recipients");
+	print MESSAGE "A new collection event ($input{EventID}) ";
+	print MESSAGE "has been loaded into ";
+	print MESSAGE "the Moorea Biocode database. \n\n";
+    }
+    
+    print MESSAGE "URL:\n";
+    print MESSAGE "http://biocode.berkeley.edu/cgi/biocode_collect_event_query?EventID=$input{EventID}&one=T\n\n";
+
+    print MESSAGE "Load file: $loadfile\n";
+
+    close(MESSAGE);
+
+
+}
+
+sub print_clear_form_button {
+
+    $url_entry_by = $input{entry_by};
+    $url_entry_by =~ s/ /\+/g;
+    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "<a href=/cgi/biocode_add_collect_event?entry_by=$url_entry_by&mode=clearform>";
+    print "<small>[CLEAR FORM]</small></a>\n";
+
+}
+

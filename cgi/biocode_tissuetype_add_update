@@ -1,0 +1,227 @@
+#!/usr/bin/perl
+
+# biocode_tissuetype_add_update
+# Joyce Gross 2/27/06 for BioCode
+
+require "utils.p";
+require "myquery_utils.p";
+require "myschema.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+
+## initialize input vars
+## note these will be overwritten by DB query as applicable
+
+foreach $attr (@biocode_tissuetype_schema) {
+    ${$attr} = $input{$attr};
+}
+
+## uncomment for system crashes
+$CRASH = 0;  ## queries will just exit out of readParse
+$crash_date = "Thursday March 6 2003";
+$today_mysql_fmt = &get_todays_date;
+
+## set values for hidden fields
+
+$step = $input{'step'};      # ckpasswd, form, submit
+$action = $input{'action'};  # change,
+$secondtimearound = $input{'secondtimearound'};  # form re-do
+$special = $input{'special'};
+
+$table = "biocode_tissuetype";
+
+$heading = "Add/Update an Moorea Biocode Tissue Type";
+
+
+## 1.
+if ($step eq "form") {
+    &print_form;
+
+## 2. User clicked Submit - check and update
+} elsif($step eq "submit") {
+    &check_input;  # bad_msg vs. input_is_OK
+    if ($input_is_OK) {
+        if ($action eq "change") {
+            &update_record;
+            &make_tissuetype_select_list;  # in myucmp_utils.p
+            &send_email;
+        } else {
+            &load_record;
+            &make_tissuetype_select_list;  # in myucmp_utils.p
+            &send_email;
+        }
+    }
+    #&print_feedback;
+    &print_form;
+}
+
+
+sub print_form {
+
+    $heading = "Add a New Moorea Biocode Tissue Type";
+    &print_biocode_form_header($heading);
+
+    if ($input{special} eq "pop") {
+
+
+        local($field) = "tissuetype";
+
+        print "\n<script language=\"Javascript\" type=\"text/javascript\">\n";
+        print "<!-- \n";
+        print "\n";
+
+        print "function AlterTissuetypeList() { \n";
+        print "var newtissuetype = new Option(\"$tissuetype\",\"$tissuetype\",false,true);";
+        print "opener.document.parentform.$field.options[";
+        print "opener.document.parentform.$field.length] = newtissuetype;";
+        print "}\n";
+        print "// --> \n";
+        print "</script>\n";
+    }
+
+
+    if ($bad_msg) {
+        print "<font color=red><b>Sorry, there's an error ...</b></font><br>";
+        print $bad_msg;
+        print "<p><i>Please make corrections below and click Submit again</i><br><hr>";
+    } elsif ($input_is_OK) {
+        print "<b><font color=green>Record successfully loaded</font></b>";
+        if ($input{special} eq "pop") {
+            print "<p><input type=button value=\"Put new tissuetype on form\" onclick=\"AlterTissuetypeList()\"><p>";
+        }
+        print "<br><hr>";
+
+        if ($DEBUG) {print "$insert_stmt";}
+        $input_is_OK = "";
+    }
+
+    print "<p>\n";
+    print "<center>\n";
+    print "<form action=/cgi/biocode_tissuetype_add_update method=post ";
+    print ">\n";
+    print "<input type=hidden name=step value=submit>\n";
+    print "<input type=hidden name=special value=pop>\n";
+    print "<input type=hidden name=action value=$action>\n";
+
+
+    print "<td align=left><font color=red>Tissue Type</font>";
+    print "&nbsp;&nbsp;";
+#    print "<input size=40 name=tissuetype value=\"$tissuetype\">";
+    print "<input size=40 name=tissuetype>";
+
+    ## Submit buttons
+    print "<tr>\n";
+    print "<td align=left valign=top colspan=2>";
+    print "<input type=submit value=\"Submit\">";
+    print "<input type=reset value=\"reset\">";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+
+    print "</center>\n";
+
+    if ($special eq "pop") {
+        &print_biocode_popup_footer;
+    } else {
+        &print_biocode_form_footer;
+    }
+
+
+}
+
+
+sub check_input {
+
+    if (!$input{tissuetype}) {
+        $bad_msg .= "<dd><li>Tissue type is required\n";
+    }
+    if (!$bad_msg) {
+        $input_is_OK = 1;
+    }
+
+}
+
+
+
+sub make_tissuetype_select_list {
+    ## make select lists for tissuetypes
+
+    $out = "$select_list_path/tissuetype.txt";
+
+    `/bin/rm -f $out`;
+
+    open(OUT,">>$out") || die "Can't open $out for writing";
+
+
+    $query = "select tissuetype from biocode_tissuetype order by tissuetype;\n";
+
+    $tmp = &get_multiple_records($query,"biocode");
+    open(FH, "$tmp") || die "Can't open tmp file for reading";
+    while($line = <FH>) {
+        chomp($line);
+        print OUT "$line\n";
+    }
+    close(FH);
+    close(OUT);
+}
+
+sub load_record {
+
+    # get next seq_num
+    $tissuetype_query = "select max(seq_num) from biocode_tissuetype";
+    @row = &get_one_record($tissuetype_query,"biocode");
+    $input{seq_num} = $row[0] + 1;
+
+    # set index_date
+    $input{index_date} = $today_mysql_fmt;
+
+    # insert into biocode_tissuetype table
+
+    $attr_list = "";
+    $value_list = "";
+
+    ## make insert statement
+    foreach $attr (@biocode_tissuetype_schema) {
+        $input{$attr} =~ s/\"/\\\"/g;
+
+        if ($input{$attr} && $input{$attr} ne "unselected") {
+            $attr_list .= "$attr, ";
+            if ($attr eq "seq_num") {  # don't need quotes
+                $value_list .= "$input{$attr}, ";
+            } else {
+                $value_list .= "\"$input{$attr}\", ";
+            }
+        }
+    }
+    $attr_list =~ s/\, $//g;
+    $value_list =~ s/\, $//g;
+    $insert_stmt = "insert into biocode_tissuetype ($attr_list) values ($value_list)";
+    &process_query($insert_stmt, "biocode");
+}
+
+
+sub send_email {
+
+    if ($action eq "new") {
+        $subject = "Moorea Biocode database: new tissuetype";
+        $body = "A new tissuetype ($input{tissuetype}) has been added";
+    } else {
+        $subject = "Moorea Biocode database: updated a tissuetype";
+        $body = "The record for $input{tissuetype} has been updated";
+    }
+
+    open(MESSAGE, "| mailx -s \"$subject\" $recipients");
+    print MESSAGE "$body to the Moorea Biocode tissuetype database. \n\n";
+
+#    print MESSAGE "URL:\n";
+#    print MESSAGE "http://biocode.berkeley.edu/cgi/biocode_people_query?seq_num=$input{seq_num}&one=T\n\n";
+
+    # print MESSAGE "Insert file: $insert_stmt\n";
+
+    close(MESSAGE);
+
+}
+

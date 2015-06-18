@@ -1,0 +1,86 @@
+<!--#include virtual="headers_footers/title.html" -->
+Add/Update a Collecting Event
+<!--#include virtual="headers_footers/head1.html" -->
+
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg height=70 border=0></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Databases
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png height=70 border=0></a>
+</td>
+</tr>
+</table>
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+<blockquote>
+       <center>
+       <small>
+       <i>
+       Back to: <a href=/>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <p>
+       <b>
+       Instructions:
+       </b>
+       Use this form to add a new Collecting Event to the Moorea Biocode database,
+       or to correct information for an existing event.
+ Complete all three items below, and then click <i>Next</i>.
+<br>
+Related page: <a href=query_collectingevents.html>Query Collecting Events</a>       
+<p>    
+       <FORM ACTION="/cgi/biocode_add_collect_event" METHOD="post">
+       <INPUT type=hidden name=special value=firstscreen>
+
+       <b>1. Select your name:</b>
+       <select size=1 name=entry_by>
+       <option selected>
+       <!--#include virtual="select_lists/submitters.txt" -->
+       </select>
+       <p>
+       <b>2. Enter your password:</b> <input name=password type=password>
+
+       <p>
+       <b>3. What do you wish to do?</b>
+       <p>
+       &nbsp;&nbsp;&nbsp;&nbsp; 
+       <input type=radio checked name=mode value=newrecord> Add a new collecting event
+       <ul>
+           <dd>project: <select size=1 name=ProjectCode>
+           <option>CMPI
+           <option>IRLA
+           <option selected>MBIO
+           </select>
+	   <p>
+	   
+       </ul>
+
+       <p>
+       &nbsp;&nbsp;&nbsp;&nbsp; 
+       <input type=radio name=mode value=update>
+            Change an existing collecting event
+	    <ul>
+	    <dd>ID#  <input name=EventID>
+	    </ul>
+<p>
+       <input type=submit value="Next ">
+       </form>
+
+</blockquote>
+
+<!--#include virtual="headers_footers/footer.html" -->
+
+

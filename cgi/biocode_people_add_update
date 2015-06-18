@@ -1,0 +1,527 @@
+#!/usr/bin/perl
+
+# biocode_people_add_update
+# Ginger Ogle 2/4/04 for MySQL
+# Joyce Gross 2/24/06 for BioCode
+
+# $DEBUG=1;
+# $debugging = 1;  # turn it on to print loadfile with fields in orange
+
+# url to bring up the form (password already checked)
+# /cgi/biocode_people_add_update?entry_by=Ginger+Ogle&action=new&step=form
+
+
+require "utils.p";
+require "myquery_utils.p";
+require "myschema.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+## uncomment for system crashes
+$CRASH = 0;  ## queries will just exit out of readParse
+$crash_date = "Thursday March 6 2003";
+$today_mysql_fmt = &get_todays_date;
+
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+
+## initialize input vars 
+## note these will be overwritten by DB query as applicable
+
+foreach $attr (@biocode_people_schema) {
+    ${$attr} = $input{$attr};
+}
+
+## for FIMS
+
+
+## set values for hidden fields
+$step = $input{'step'};      # ckpasswd, form, submit
+$action = $input{'action'};  # change, 
+$secondtimearound = $input{'secondtimearound'};  # form re-do
+$special = $input{'special'};
+
+
+## 1. Start: check password and print the form if it's OK
+if ($step eq "ckpasswd") {
+    &check_password;
+    if ($bad_msg) {
+	&print_error_page;
+    } else {
+	&print_form;
+    }
+} elsif ($special eq "fims" && !$input{action}) {
+    &print_form;
+
+## 2. User wants to do a new entry (from What Next?)
+} elsif ($step eq "form") {
+    &print_form;
+
+## 3. User clicked Submit - check and update
+} elsif($step eq "submit") {
+    &check_input;  # bad_msg vs. input_is_OK
+    if ($input_is_OK) {
+	if ($action eq "change") { 
+	    &update_record;
+	    &make_people_select_list;  # in mybiocode_utils.p
+	    # &send_email;
+	} else { 
+	    &load_record;
+            if($special ne "fims") {
+	        &make_people_select_list;  # in mybiocode_utils.p
+            }
+	    # &send_email;
+	}
+    }
+    #&print_feedback;
+    &print_form;
+}
+
+sub check_password {
+
+    if (!$input{form_completed_by} || $input{form_completed_by} eq "select one") {
+	$bad_msg .= "<dd><li>Please choose your name from the list";
+        return;
+    }
+    ## get password
+    $query = "select passwd from biocode_people where name_full = '$input{form_completed_by}'";
+    @row = &get_one_record($query,"biocode");
+    if (!$row[0]) {
+	$bad_msg .= "<dd><li>wrong password.";
+	return;
+    } else {
+	$passwd = $row[0]; 
+    }
+
+    if ($input{password} eq $passwd) {
+	$passwd = "";  # reset it
+    } else {
+	$bad_msg .= "<dd><li>wrong password.";
+	return;
+    }
+}
+
+sub check_input {  
+
+
+    if (!$input{name_full}) {
+        $bad_msg .= "<dd><li>Full name is required\n";
+    }
+    if (!$input{name_last}) {
+        $bad_msg .= "<dd><li>Last name is required\n";
+    } else {
+	if ($input{name_full}) {
+	    if ($name_full !~ /$name_last/) {
+		$bad_msg .= "<dd><li>Last name \"$name_last\" does not appear in full name \"$name_full\"\n";
+	    } 
+	}
+    }
+    if ($input{name_full} =~ /\,/) {
+	$bad_msg .= "<dd><li>Names cannot contain commas\n";
+    }
+
+    if (!$input{collector}) {
+        $bad_msg .= "<dd><li>Collector status is required\n";
+    } elsif ($input{collector} eq "yes") {
+	$input{collector} = 1;
+    } else {
+	$input{collector} = 0;
+    }
+
+    if (!$input{submitter}) {
+        $bad_msg .= "<dd><li>Submitter status is required\n";
+    } elsif ($input{submitter} eq "yes") {
+        $input{submitter} = 1;
+	if (!$input{passwd}) {
+	    $bad_msg .= "<dd><li>Password is required for data submitters";
+	}    
+    } else {
+        $input{submitter} = 0;
+    }
+
+    # if (!$bad_msg && $action ne "change"{
+    if (!$bad_msg && $action ne "change" && $special ne "fims") {
+	$input{name_full} = &strip("$input{name_full}");
+	$coll_query = "select * from biocode_people where name_full='$input{name_full}'";
+	@row = &get_one_record($coll_query,"biocode");
+	if ($row[0]) {
+	    $bad_msg .= "<dd><li>We already have that name in the People database: ";
+	    $bad_msg .=  "<dd>Name: $row[1]\n";
+	    $bad_msg .=  "<dd>(Added on $row[8] by $row[9])\n";
+	}
+    }
+    ## check initials
+    # if ($input{name_initials}) {
+    if ($input{name_initials} && $special ne "fims") {
+	$init_query = "select * from biocode_people where name_initials=\"$input{name_initials}\" ";
+	$init_query .= "and name_full != \"$input{name_full}\"";
+	@row = &get_one_record($init_query,"biocode");
+	if ($row[0]) {
+	    $bad_msg .= "<dd><li>We already have those initials in the database for $row[1]\n";
+	}
+    }
+    if (!$bad_msg) {
+	$input_is_OK = 1;
+    }
+}
+
+
+sub get_existing_record {
+
+    local($query) = "select * from biocode_people where name_full=\"$name_full\"";
+    @row = &get_one_record($query,"biocode");
+
+    ## initialize original values
+    $count = 0;
+    foreach $colname (@biocode_people_schema) {
+	if ($row[$count] eq "NULL") {
+	    $row[$count] = "";
+	}
+	${$colname} = $row[$count];  ## set vals for print_form
+	$count++;
+    }
+    
+}
+
+sub load_record {
+
+    # get next seq_num 
+
+    ($input{seq_num}) = &get_one_record("select uuid()");
+
+    $input{edit_species} = 1;
+
+    # set index_date
+    $input{index_date} = $today_mysql_fmt;
+    if ($input{form_completed_by}) { # from initial form
+	$input{entry_by} = $input{form_completed_by};
+    }
+
+    # insert into biocode_people table
+
+    $attr_list = "";
+    $value_list = "";
+
+    ## make insert statement
+    foreach $attr (@biocode_people_schema) {
+	$input{$attr} =~ s/\"/\\\"/g;
+	$input{$attr} =~ s/\'/\\\'/g;
+
+	if ($input{$attr} && $input{$attr} ne "unselected") {
+	    $attr_list .= "$attr, ";
+            $value_list .= "\"$input{$attr}\", ";
+	}
+    }
+    $attr_list =~ s/\, $//g;
+    $value_list =~ s/\, $//g;
+    $insert_stmt = "insert into biocode_people ($attr_list) values ($value_list)";
+    &process_query($insert_stmt, "biocode");
+}
+
+sub update_record {
+
+    ## update everything
+
+    $count = 0;
+    $set_list = "";
+    foreach $attr (@biocode_people_schema) {
+	$input{$attr} =~ s/\"/\\\"/g;
+	if ($attr eq "seq_num") {
+            # skip it
+	} elsif ($input{$attr}) {
+	    $set_list  .= "$attr=\"$input{$attr}\", ";
+	} else {
+	    $set_list  .= "$attr=NULL, ";
+	}
+
+	# if ($attr eq "seq_num" || $attr eq "index_date" || $attr eq "entry_by" || $attr eq "num_specimens") {
+	    # skip it
+
+	# } else {
+	#    if ($attr eq "collector" || $attr eq "submitter") {
+	#	$set_list  .= "$attr=$input{$attr}, ";
+        #    } elsif ($input{$attr}) {
+	#	$set_list  .= "$attr=\"$input{$attr}\", ";
+	#    } elsif ($attr eq "num_specimens") {  ## it's null
+	#	$set_list  .= "$attr=NULL, ";
+	#    }
+	#}
+	#$count++;
+    }	    
+    $set_list =~ s/\, $//g;
+    $upd_stmt = "update biocode_people set $set_list where seq_num = '$input{'seq_num'}'";
+    #print "Content-type: text/html\n\n";
+    #print "update: $upd_stmt<p>";
+    &process_query($upd_stmt, "biocode");
+}
+
+
+
+sub send_email {
+
+    if ($action eq "new") {
+	$subject = "Moorea Biocode database: new person";
+	$body = "A new person ($input{name_full}) has been added";
+    } else {
+	$subject = "Moorea Biocode database: updated a person";
+	$body = "The record for $input{name_full} has been updated";
+    }
+
+    open(MESSAGE, "| mailx -s \"$subject\" $recipients");
+    print MESSAGE "$body to the Moorea Biocode people database. \n\n";
+    
+    print MESSAGE "$upd_stmt\n\n";
+    print MESSAGE "URL:\n";
+    print MESSAGE "http://biocode.berkeley.edu/cgi/biocode_people_query?seq_num=$input{seq_num}&one=T\n\n";
+
+    # print MESSAGE "Insert file: $insert_stmt\n";
+
+    close(MESSAGE);
+}
+
+
+sub print_error_page {
+
+    ## this prints out for the password entry page only
+
+    $heading = "Add/Update an Moorea Biocode Person";
+    &print_biocode_header($heading);
+    print "<hr><font color=red><h4>Sorry, there's an error ...</h4></font><br>";
+    print $bad_msg;
+    print "<p>Please go back and try again<p>";
+    &print_biocode_footer;
+
+
+}
+
+
+sub print_form {
+
+    ## this prints the form to add or update a person
+
+    if ($input{form_completed_by}) {  # from initial screen
+	$input{entry_by} = $input{form_completed_by};
+    }
+
+    $heading = "Add/Update a New Moorea Biocode Person";
+    &print_biocode_form_header($heading);
+
+    if ($input{special} eq "pop") {
+
+	$newname = &make_lastnamefirst($name_full);
+	$colnum = $input{whichcol};  # which collector (passed in in URL)
+
+	local($cnum) = "Collector";
+#	local($cnum) = "person_subsampling";
+	if ($colnum > 1) {
+	    $cnum = $cnum . $colnum;  # "Collector2"
+	}
+	# print "colnum=|$colnum| cnum=|$cnum|";
+
+	print "\n<script language=\"Javascript\" type=\"text/javascript\">\n";
+	print "<!-- \n";
+	print "\n";
+# HERE
+	print "function AlterCollectorList() { \n";
+	print "var newcollector = new Option(\"$newname\",\"$newname\",false,true);";
+	print "opener.document.parentform.$cnum.options[";
+	print "opener.document.parentform.$cnum.length] = newcollector;";
+	print "}\n";
+	print "// --> \n";
+	print "</script>\n";
+    }
+
+    if ($bad_msg) {
+	print "<font color=red><b>Sorry, there's an error ...</b></font><br>";
+	print $bad_msg;
+	print "<p><i>Please make corrections below and click Submit again</i><br><hr>";
+    } elsif ($input_is_OK) {
+	print "<b><font color=green>Record successfully loaded</font></b>";
+	if ($input{special} eq "pop") {
+	    print "<p><input type=button value=\"Put new name on form\" onclick=\"AlterCollectorList()\"><p>";
+	}
+	print "<br><hr>";
+
+	if ($DEBUG) {print "$insert_stmt";}
+	$input_is_OK = "";
+    }
+
+    print "<center><b>Fields in <font color=red>red</font> are required.</b></center>\n";
+
+    print "<form action=/cgi/biocode_people_add_update method=post ";
+    print ">\n";
+
+    if($input{special} eq "fims") {
+        print "<input type=hidden name=step value=submit>\n";
+        print "<input type=hidden name=action value=new>\n";
+        print "<input type=hidden name=secondtimearound value=1>\n";
+        print "<input type=hidden name=special value=$special>\n";
+        print "<input type=hidden name=form_completed_by value=\"FIMS User\">\n";
+        print "<input type=hidden name=entry_by value=\"FIMS User\">\n";
+        print "<input type=hidden name=whichcol value=\"$colnum\">\n";
+    } else {
+        print "<input type=hidden name=step value=submit>\n";
+        print "<input type=hidden name=action value=$action>\n";
+        print "<input type=hidden name=secondtimearound value=1>\n";
+        print "<input type=hidden name=special value=$special>\n";
+        print "<input type=hidden name=form_completed_by value=\"$input{form_completed_by}\">\n";
+        print "<input type=hidden name=entry_by value=\"$input{entry_by}\">\n";
+        print "<input type=hidden name=whichcol value=\"$colnum\">\n";
+    }
+
+    if ($action eq "change") {
+	if ($secondtimearound) {
+	    # don't do the DB query
+	} else {
+	    &get_existing_record;
+	}
+	print "<input type=hidden name=seq_num value=$seq_num>\n";
+	print "<input type=hidden name=index_date value=$index_date>\n";
+	print "<input type=hidden name=num_specimens value=$num_specimens>\n";
+
+    } elsif ($step eq "ckpasswd") {
+	$name_full = "";  # make sure no name goes in
+    }
+
+
+    print "<table>\n";
+
+    ## Full Name
+    print "<tr>\n";
+    print "<td align=left><font color=red>Full Name</font>";
+    print "&nbsp;&nbsp;";
+    print "<input size=30 name=name_full value=\"$name_full\">";
+
+    ## Last Name
+    print "&nbsp;&nbsp;";
+    print "<font color=red>Last Name</font>";
+    print "&nbsp;&nbsp;";
+    print "<input size=10 name=name_last value=\"$name_last\">";
+    print "</td>\n";
+    print "</tr>\n";
+
+    ## Collector
+    print "<tr>\n";
+    print "<td colspan=2 align=left><font color=red>Is this person ... \n";
+    print " a collector?</font>\n";
+    if ($collector eq "yes" || $collector ==1) {
+	print "<input type=radio name=collector value=yes checked> yes\n"; 
+	print "<input type=radio name=collector value=no> no\n";
+    } else {
+	print "<input type=radio name=collector value=yes checked> yes\n";
+        print "<input type=radio name=collector value=no> no\n";
+    }
+    print "&nbsp;&nbsp;";
+
+    ## Submitter
+    print "<font color=red> ... submitting data?</font>\n";
+    if ($submitter eq "yes" || $submitter == 1) { 
+	print "<input type=radio name=submitter value=yes checked> yes\n";
+	print "<input type=radio name=submitter value=no> no\n";
+    } else {
+	print "<input type=radio name=submitter value=yes> yes\n";
+        print "<input type=radio name=submitter value=no checked> no\n";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+    print "<table>\n";
+
+
+    ## Password
+    print "<tr>\n";
+    print "<td align=left>Password (<font color=red>required for data submitters</font>)";
+    print "&nbsp;&nbsp;";
+    print "<input name=passwd value=\"$passwd\" type=password>";
+    print "&nbsp;&nbsp; ";
+    print "</td>\n";
+    print "</tr>\n";
+
+    ## Label Name
+    print "<tr>\n";
+    print "<td align=left>Name Format for Labels";
+    print "&nbsp;&nbsp;";
+    print "<input size=30 name=name_short value=\"$name_short\">";
+    print "&nbsp;&nbsp;";
+    print "</td>\n";
+    print "</tr>\n";
+
+    ## Initials
+    print "<tr>\n";
+    print "<td align=left>";
+    print "Initials";
+    print "&nbsp;&nbsp;";
+    print "<input size=5 name=name_initials value=\"$name_initials\">";
+    print "&nbsp;&nbsp;";
+
+
+    ## Affiliation
+    print "Affiliation";
+    print "&nbsp;&nbsp;";
+    print "<input size=30 name=affiliation value=\"$affiliation\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    ## Email address
+    print "<tr>\n";
+    print "<td align=left>Email Address";
+    print "&nbsp;&nbsp;";
+    print "<input size=40 name=email value=\"$email\">";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+    print "<table>\n";
+    ## Biography
+    print "<tr>\n";
+    print "<td valign=center align=left>Biography</td>";
+    print "<td><textarea wrap=virtual rows=3 cols=40 name=bio>";
+    if ($bio) {
+	print $bio;
+    }
+    print "</textarea>";
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+    print "<table>\n";
+
+    ## Other notes
+    print "<tr>\n";
+    print "<td align=left>Notes";
+    print "&nbsp;&nbsp;";
+    print "<input size=50 name=notes value=\"$notes\">";
+    print "</td>\n";
+    print "</tr>\n";
+
+    ## Form completed by
+    print "<tr>\n";
+    print "<td align=left>Form completed by ";
+    #print "$input{form_completed_by}";
+    print "$input{entry_by}";
+    print "&nbsp;&nbsp;";
+    print "$todays_date";
+    print "</td>\n";
+    print "</tr>\n";
+
+    ## Submit buttons
+    print "<tr>\n";
+    print "<td align=left valign=top colspan=2>";
+    print "<input type=submit value=\"Submit\">";
+    print "<input type=reset value=\"reset\">";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+    if ($special eq "pop") {
+	&print_biocode_popup_footer;
+    } else {
+	&print_biocode_form_footer;
+    }
+}
+
+
+
+
+
+

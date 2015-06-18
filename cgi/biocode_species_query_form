@@ -1,0 +1,678 @@
+#!/usr/bin/perl
+# Joyce Gross -- April 2005
+# This script prints the main Moorea Biocode species query form.
+#
+
+require "myquery_utils.p";
+require "myschema.p";
+require "utils.p";
+require "biocode_settings";
+
+
+&readParse(*input);  # if there is any... for login/logout
+&parse_input;
+
+$port = $ENV{'SERVER_PORT'};
+
+$CRASH = 0;
+$crash_date = "Thu Apr 28 22:33:59 PDT 2005";
+
+if ($CRASH) {
+    print "Content-type: text/html\n\n";
+    print "<h3>Sorry, our database is temporarily offline ";
+    print "while update the data.</h3>";
+    print "Please try again in an hour .";
+    print "<p>This message was last updated <b>$crash_date</b><p>";
+    exit;
+}
+
+
+# This is to keep track of sessions.
+$tmp_login_dir = "$tmp_file_location/unknown_query";
+if($input{lfile} && !-e "$tmp_login_dir/$input{lfile}") {
+    $input{lfile} = "";
+}
+
+if($port eq "8000") {
+    $html_dir = "/usr/local/web/test/biocode/web";
+} else {
+    $html_dir = "/usr/local/web/biocode/web";
+}
+
+
+
+print "Content-type: text/html\n\n";
+
+#### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/title.html" -->
+open(FH,"$html_dir/headers_footers/title.html") || die "Can't open $html_dir/headers_footers/title.html";
+while(<FH>) {
+    print "$_";
+}
+close(FH);
+
+
+
+print "Moorea Biocode Species Database Query\n";
+
+#### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/head1css.html" -->
+open(FH,"$html_dir/headers_footers/head1css.html") || die "Can't open $html_dir/headers_footers/head1css.html";
+while(<FH>) {
+    print "$_";
+}
+close(FH);
+
+print "<table><tr><td>";
+print "<a href=http://www.mooreabiocode.org/><img src=http://biocode.berkeley.edu/images/biocode_new.jpg height=70  border=0></a>";
+print "</td>";
+print "<td>";
+print "<big><big><big>";
+print "Moorea Biocode Species Database Query\n";
+print "</td>";
+print "<td>\n";
+print "&nbsp;&nbsp;\n";
+print "<a href=http://www.univ-perp.fr/ephe/criobe.htm><img src=http://biocode.berkeley.edu/images/criobe_new.png height=70 border=0></a>\n";
+print "</td>\n";
+print "</tr>";
+print "</table>";
+
+
+
+print "</td>\n";
+print "</tr>\n";
+print "</table>\n";
+print "</td>\n";
+print "</tr>\n";
+print "<tr bgcolor=\"gray\">\n";
+print "<td width=100% colspan=\"2\" align=right>&nbsp;\n";
+if($input{lfile}) {
+    # update the date on the file, so it doesn't get deleted yet
+    `touch $tmp_login_dir/$input{lfile}`;
+
+    print "<a class=nounderline href=\"/cgi/biocode_login.pl?login=logout&lfile=$input{lfile}\">logout</a>\n";
+} else {
+    print "<a class=nounderline href=\"/cgi/biocode_login.pl?login=printform\">login</a>\n";
+}
+print "&nbsp;&nbsp;\n";
+print "</td>\n";
+print "</tr>\n";
+print "<tr>\n";
+print "<td bgcolor=#669ACC valign=top width=5%>&nbsp;\n";
+
+
+
+#### <!--#include virtual="http://biocode.berkeley.edu/headers_footers/head3.html" -->
+open(FH,"$html_dir/headers_footers/head3.html") || die "Can't open $html_dir/headers_footers/head3.html";
+while(<FH>) {
+    print "$_";
+}
+close(FH);
+
+print "<center><small><i>";
+print "Back to: <a href=/>Moorea Biocode Collections</a>\n";
+print "</small></i></center><p>\n";
+
+print "<blockquote><p><br>\n";
+
+# get a current count
+local($query) = "select count(*) from biocode_species";
+local($total_recs) = &get_one_record($query,"biocode");
+$total_recs = &add_commas($total_recs);
+
+# print "<b>Total records = 44,055</b><p>\n";
+print "<b>Total records = $total_recs</b><p>\n";
+
+print "<form method=get action=\"/cgi/biocode_species_query\">\n";
+print "<input type=hidden name=query_src value=biocode_queryspecies>\n";
+print "<input type=hidden name=stat value=BROWSE>\n";
+
+print "<b>Browse</b> species starting with:\n";
+print "<input type=hidden name=special value=browse>\n";
+print "<input type=hidden name=rel-ordr value=eq>\n";
+print "<input type=hidden name=groupby value=family>\n";
+print "<input type=hidden name=orderby value=family>\n";
+print "<input type=hidden name=selectlist value=family>\n\n";
+
+print "<select name=where-ordr>\n";
+print "<option selected>\n";
+
+open(LIST,"$select_list_path/order_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    print "$line\n";
+}
+close(LIST);
+print "</select>\n";
+
+print "<input type=\"submit\" name=\"Search\" value=\"Browse\">";
+
+if($input{lfile}) {
+    print "<input type=hidden name=lfile value=$input{lfile}>\n";
+}
+
+print "</form>";
+print "<hr size=5 noshade>";
+print "<br>";
+
+print "<b>Search</b> for a species:";
+print "<br>";
+print "<small>";
+print "Type all or part of a word, case unimportant.";
+print "If more than one field is completed, the search will look for records that meet";
+print "both conditions.";
+print "</small>";
+
+print "<form method=get action=\"/cgi/biocode_species_query\">";
+
+print "<input type=hidden name=selectlist value=\"seq_num,kingdom,phylum,subphylum,superclass,class,subclass,infraclass,superorder,ordr,suborder,infraorder,superfamily,family,subfamily,tribe,subtribe,genus,subgenus,species,subspecies,author,year,species_notes,photo\">\n\n";
+
+
+if($input{lfile}) {
+    print "<input type=hidden name=lfile value=$input{lfile}>\n";
+}
+
+
+print <<END2;
+
+<input type=hidden name=query_src value=biocode_queryspecies>
+
+<input type=hidden name=table value=biocode_species>
+
+          <table border=0 cellpadding="2" cellspacing="2">
+
+<tr>
+<td>
+<table border=0>
+          <tr>
+          <td>
+          </td>
+          <td align=right>Sort results by:</td>
+          <td>
+          <select name=orderby>
+	  <option value="species|subspecies">species, subspecies
+	  <option value="genus|species|subspecies">genus, species, subspecies
+	  <option value="family|genus|species|subspecies">family, genus, species, subspecies
+	  <option value="ordr|family|genus|species|subspecies">order, family, genus, species, subspecies
+	  <option value="class|ordr|family|genus|species|subspecies">class, order, family, genus, species, subspecies
+	  <option value="phylum|subphylum|superclass|class|subclass|infraclass|superorder|ordr|suborder|infraorder|superfamily|family|subfamily|tribe|subtribe|genus|species|subspecies" selected>all levels
+	  </select>
+          </td>
+          </tr>
+
+           <tr>
+           <td></td>
+           <td align=right>Also show:</td>
+           <td>
+           <input type=checkbox name=display2 value=subphylum>
+           subphylum &nbsp;
+           <input type=checkbox name=display3 value=superclass>
+           superclass &nbsp;
+           <input type=checkbox name=display4 value=subclass>
+           subclass &nbsp;
+           <input type=checkbox name=display5 value=infraclass>
+           infraclass &nbsp;
+           <input type=checkbox name=display6 value=superorder>
+           superorder &nbsp;
+           <input type=checkbox name=display7 value=suborder>
+           suborder &nbsp;
+           <br>
+           <input type=checkbox name=display8 value=infraorder>
+           infraorder &nbsp;
+           <input type=checkbox name=display9 value=superfamily>
+           superfamily &nbsp;
+           <input type=checkbox name=display10 value=subfamily>
+           subfamily &nbsp;
+           <input type=checkbox name=display11 value=tribe>
+           tribe &nbsp;
+           <input type=checkbox name=display12 value=subtribe>
+           subtribe &nbsp;
+           <input type=checkbox name=display13 value=subgenus>
+           subgenus
+           </td>
+           </tr>
+
+           <tr>
+           <td>
+           &nbsp;
+           </td>
+           <td>
+           &nbsp;
+           </td>
+           <td>
+           &nbsp;
+           </td>
+           </tr>
+
+
+
+
+            <tr>
+              <td align=right>Subspecific Epithet</td>
+              <td>
+              <select name="rel-subspecies">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-subspecies">
+                <small>Example: <i>campyla</i></small>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Specific Epithet</td>
+              <td>
+              <select name="rel-species">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-species">
+                <small>Example: <i>nigrifemoratus</i></small>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Genus</td>
+              <td>
+              <select name="rel-genus">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-genus">
+                <small>Example: <i>Amartus</i></small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right> Tribe</td>
+              <td>
+              <select name="rel-tribe">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-tribe">
+		<small><i>&nbsp;Example: Bistonini</i></small>
+              </td>
+            </tr>
+
+	    
+
+            <tr>
+              <td align=right> Subfamily</td>
+              <td>
+              <select name="rel-subfamily">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-subfamily">
+		<small><i>&nbsp;Example: Limnephilinae</i></small>
+              </td>
+            </tr>
+
+            <tr valign="middle"> 
+	      <td align=right>Family</td>
+              <td>
+		<select name=rel-family>
+		<option selected>contains
+		<option>begins with
+		<option>equals
+		</select>
+                </td>
+                <td><input name=where-family>
+		<small><i>&nbsp;Example: Pieridae</i></small>
+                </td>
+              </td>
+            </tr>
+
+            <tr valign="middle"> 
+	      <td align=right>Superfamily</td>
+              <td>
+		<select name=rel-superfamily>
+		<option selected>contains
+		<option>begins with
+		<option>equals
+		</select>
+                </td>
+                <td><input name=where-superfamily>
+		<small><i>&nbsp;Example: Gelechioidea</i></small>
+                </td>
+              </td>
+            </tr>
+
+            <tr valign="middle"> 
+	      <td align=right>Infraorder</td>
+              <td>
+		<select name=rel-infraorder>
+		<option selected>contains
+		<option>begins with
+		<option>equals
+		</select>
+                </td>
+                <td><input name=where-infraorder>
+		<small><i>&nbsp;</i></small>
+                </td>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right> Suborder</td>
+              <td><select name="rel-suborder">
+                <option selected>equals
+                </select>
+              </td>
+              <td>
+		<select name=where-suborder>
+		<option selected>
+
+END2
+
+open(LIST,"$select_list_path/suborder_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+print "		</select>\n";
+print "              </td>\n";
+print "            </tr>\n";
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Order</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-ordr\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-ordr>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/order_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Superorder</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-superorder\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-superorder>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/superorder_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Infraclass</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-infraclass\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-infraclass>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/infraclass_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Subclass</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-subclass\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-subclass>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/subclass_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Class</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-class\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-class>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/class_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Superclass</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-superclass\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-superclass>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/superclass_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Subphylum</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-subphylum\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-subphylum>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/subphylum_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+
+
+print "            <tr valign=\"middle\"> \n";
+
+print "	      <td align=right>Phylum</td>\n";
+print "              <td>\n";
+print "              <select name=\"rel-phylum\">\n";
+print "                <option selected>equals\n";
+print "                </select>\n";
+print "              </td>\n";
+              
+print "              </td>\n";
+print "              <td>\n";
+print "		<select name=where-phylum>\n";
+print "		<option selected>\n";
+open(LIST,"$select_list_path/phylum_biocode_species.txt");
+while($line = <LIST>) {
+    chomp($line);
+    if (!$line) {next;}
+    print "$line\n";
+}
+close(LIST);
+
+    print <<END3;
+		</select>
+              </td>
+            </tr>
+
+            <tr valign="middle"> 
+
+	      <td align=right>Kingdom</td>
+              <td>
+              <select name="rel-kingdom">
+                <option selected>equals
+                </select>
+              </td>
+              
+              </td>
+                <td>
+                <select name="where-kingdom">
+                <option selected>
+                <option>Fungi
+                <option>Metazoa
+                <option>Monera
+                <option>Protista
+                <option>Viridiplantae
+                </select>
+              </td>
+            </tr>
+            <tr valign="middle"> 
+
+	      <td align=right>Author</td>
+              <td>
+              <select name="rel-author">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                <option>is null
+                </select>
+              </td>
+              
+              </td>
+                <td><input name=where-author>
+              </td>
+            </tr>
+
+            <tr valign="middle"> 
+
+	      <td align=right>Year</td>
+              <td>
+              <select name="rel-year">
+                <option selected>equals
+                <option>before
+                <option>after
+                <option>is null
+                </select>
+              </td>
+              
+              </td>
+                <td><input name=where-year>
+              </td>
+            </tr>
+
+
+
+
+
+
+	    <tr>
+              <td><br></td>
+            </tr>
+
+
+
+
+
+	     <tr>
+              <td><br></td>
+              <td align=left colspan=3>
+	      <input type="submit" name="Search" value="Search">
+	      <input type="reset" name="Reset" value="Reset">
+&nbsp; &nbsp; &nbsp; &nbsp;
+<small>
+Number Records to Display Per Page:
+</small>
+<input type="text" size="4" name="maxrows" value="100">
+
+</form>
+	      </td>
+            </tr>
+</table>
+</td>
+
+
+</td>
+</tr>
+
+
+
+	    </table>
+
+
+
+
+
+
+END3
+
+
+#### <!--#include file="http://biocode.berkeley.edu/headers_footers/footer.txt" -->
+open(FH,"$html_dir/headers_footers/footer.html") || die "Can't open $html_dir/headers_footers/footer.html";
+while(<FH>) {
+    print "$_";
+}
+close(FH);
+

@@ -1,0 +1,62 @@
+#!/usr/bin/perl
+
+require "biocode_settings";
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p"; 
+require "mybiocode_utils.p";
+
+
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+print "Content-type: text/html\n\n";
+
+my ($locality, $island, $country, $collector_list) = &get_event_info($input{EventID});
+
+if(!$locality && !$island && !$country && !$collector_list) {
+    &print_collevent_not_found;
+} else {
+    &print_collevent_info($locality, $island, $country, $collector_list);
+}
+
+
+sub get_event_info {
+    my $query = "select locality, island, country, collector_list from biocode_collecting_event where EventID = $input{EventID}";
+    my ($locality, $island, $country, $collector_list) = &get_one_record("$query","biocode");
+
+    return ($locality, $island, $country, $collector_list);
+}
+
+sub print_collevent_info {
+    my ($locality, $island, $country, $collector_list) = @_;;
+    # print event info:
+    print "<table border>\n";
+    print "<tr>\n";
+    print "<td bgcolor=yellow>\n";
+    print "<a href=http://biocode.berkeley.edu/cgi/biocode_collect_event_query?EventID=$input{EventID}&one=T>Event ID $input{EventID}</a>:";
+    print "<br>";
+    if($locality) {
+        print "$locality, ";
+    }
+    print "$island, $country.";
+    if($collector_list) {
+       print "<br>Collected by $collector_list\n";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+}
+
+sub print_collevent_not_found {
+    print "<table border>\n";
+    print "<tr>\n";
+    print "<td>\n";
+    print "<font color=red>Error: Collecting Event ID $input{EventID} not found.</font>\n";
+    print "<a href=http://biocode.berkeley.edu/query_collectingevents.html>Search</a> Collecting Events.\n";
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+}
+

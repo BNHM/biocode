@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cns>
+<schema namespace="http://biocode.berkeley.edu/">
+
+<label>Biocode LIMS</label>
+<alias>lims</alias>
+<location>http://biocode.berkeley.edu/schema/lims_extension.xml</location>
+<concepts>
+
+<concept id="http://biocode.berkeley.edu/schema/tissue_id">
+<alias>tissue_id</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/tissue_num">
+<alias>tissue_num</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+
+<concept id="http://biocode.berkeley.edu/schema/plate">
+<alias>plate</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/well">
+<alias>well</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/extract_id">
+<alias>extract_id</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/lowesttaxon">
+<alias>lowesttaxon</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/lowesttaxonlevel">
+<alias>lowesttaxonlevel</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/lowesttaxonlevel">
+<alias>lowesttaxonlevel</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/guid">
+<alias>guid</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/datelastmodified">
+<alias>datelastmodified</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/person_subsampling">
+<alias>person_subsampling</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/container">
+<alias>container</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/preservative">
+<alias>preservative</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/tissuetype">
+<alias>tissuetype</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/molecular_id">
+<alias>molecular_id</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/from_tissue">
+<alias>from_tissue</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/tissue_barcode">
+<alias>tissue_barcode</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/tissue_remaining">
+<alias>tissue_remaining</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+<concept id="http://biocode.berkeley.edu/schema/identifiedby">
+<alias>identifiedby</alias>
+<datatype>http://www.w3.org/2001/XMLSchema#string</datatype>
+</concept>
+
+</concepts>
+</schema>
+</cns>
+

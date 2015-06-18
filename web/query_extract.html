@@ -1,0 +1,200 @@
+<!--#include virtual="headers_footers/title.html" -->
+    Query the Moorea Biocode Extract Database
+<!--#include virtual="headers_footers/head1.html" -->
+
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg border=0 height=70></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Databases
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png border=0 height=70></a>
+</td>
+</tr>
+</table>
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+       <center>
+       <small>
+       <i>
+       Back to: <a href=http://biocode.berkeley.edu>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <p>
+<p>
+<FORM ACTION="/cgi/biocode_extract_query" METHOD="get">
+<input type=hidden name=table value=biocode_extract>
+<input type=hidden name=jointables value="biocode,biocode_extract">
+<input type=hidden name=joincolumns value="biocode.bnhm_id = biocode_extract.bnhm_id">
+<table>
+
+	    <tr>
+              <td align=right>Extract Barcode</td>
+              <td>
+              <select name="rel-biocode_extract.extract_barcode">
+                <option selected>equals
+                <option>begins with
+                <option>ends with
+                <option>contains
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode_extract.extract_barcode">
+	      <small><i>666</i></small>
+	      </td>
+            </tr>
+
+
+
+	    <tr>
+              <td align=right>Collector's Specimen No.</td>
+              <td>
+              <select name="rel-biocode.Specimen_Num_Collector">
+                <option selected>equals
+                <option>begins with
+                <option>ends with
+                <option>contains
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.Specimen_Num_Collector">
+	      <small><i>BMOO-1727</i></small>
+	      </td>
+            </tr>
+
+
+
+
+<tr>
+<td align=right>Biocode No.</td>
+<td><select name="rel-biocode_extract.bnhm_id">
+                <option>equals
+                <option>begins with
+                <option selected>contains
+                </select>
+		<small>
+</td>
+<td><input name=where-biocode_extract.bnhm_id>
+<small><i>MBIO155</i></small>
+</td>
+</tr>
+
+<tr>
+<td align=right>Extract Num</td>
+<td><select name="rel-biocode_extract.extract_num">
+                <option selected>equals
+                <option>begins with
+                <option>contains
+                </select>
+		<small>
+</td>
+<td><input name=where-biocode_extract.extract_num>
+<small><i>1</i></small>
+</td>
+</tr>
+
+
+<tr>
+<td align=right>Institution</td>
+<td><select name="rel-biocode_extract.HoldingInstitution">
+<option selected>contains
+                <option>begins with
+                <option>equals
+                </select>&nbsp;
+</td>
+<td><input name=where-biocode_extract.HoldingInstitution>
+<small><i>example: "Plane"</i></small>
+</td>
+</tr>
+
+
+
+<tr>
+<td align=right>Container</td>
+<td><select name="rel-biocode_extract.container">
+                <option>equals
+                </select>&nbsp;
+</td>
+<td>
+<select name=where-biocode_extract.container size=1>
+<option>
+<!--#include virtual="select_lists/container_opt.txt" -->
+</select>
+</td>
+</tr>
+
+
+<tr>
+<td align=right>96 Format Name</td>
+<td><select name="rel-biocode_extract.format_name96">
+                <option>equals
+                <option>begins with
+                <option selected>contains
+                </select>
+		<small>
+</td>
+<td><input name=where-biocode_extract.format_name96>
+</td>
+</tr>
+
+
+
+
+
+
+
+            <tr>
+	      <td colspan=2 align=right>
+	      <small>Sort results by:</small>
+	      </td>
+	      <td>
+	      <input type=radio checked name=orderby value="CatalogNumberNumeric">MBIO number&nbsp;
+	      <input type=radio name=orderby value="Family|ScientificName">Family, Scientific Name&nbsp;
+	      </td>
+            </tr>
+
+
+            </tr>
+
+            <tr>
+              <td colspan=2 align=right>
+              <small>Number of Records to Display Per Page:</small>
+              </td>
+              <td>
+              <input type="text" size="4" name="max" value="100">
+              </td>
+
+            </tr>
+
+             <tr>
+              <td><br></td>
+              <td align=left colspan=2>
+              <input type="submit" name="Search" value="Search">
+              <input type="reset" name="Reset" value="Reset">
+              </td>
+            </tr>
+
+
+
+</table>
+</form>
+<p>
+
+<br>
+<p>
+<p>
+<br>
+<!--#include virtual="headers_footers/footer.html" -->
+
+

@@ -1,0 +1,396 @@
+#!/usr/bin/perl
+
+# biocode_people_query Jan 2004  (using mysql)
+# /cgi/biocode_people_query?seq_num=6&one=T
+# /cgi/biocode_people_query?name_full="$name_full"&one=T
+
+# $DEBUG = 1;
+
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p"; 
+require "mybiocode_utils.p";
+
+$download_on = 1;    # turn this on to enable download of results
+
+$selectlist = "*";
+
+$max_rows = 100;
+$latlong = 0;
+$orig_in = $ENV{'QUERY_STRING'};
+$biocode_url = "http://biocode.berkeley.edu";### begin
+
+### begin
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+$table = "biocode_people";
+$script_name = "biocode_people_query";
+$heading = "Moorea Biocode People";
+
+
+if (!$max) {
+    $max = 100;
+}
+
+if ($input{"download"}) {   
+    $displaylist = $input{'displaylist'};
+    &download_biocode_people ($input{"download"});
+					   
+} elsif ($input{"one"} eq "T") {
+    &one_record_query;
+    if ($bad_args_for_one_record_query) {
+	#&print_biocode_header($heading);
+	&print_biocode_header_css($heading);
+	print "<p><h3>Sorry, I don't understand that query.  Please try again</h3>";
+	&print_biocode_footer;
+	return;
+    } else {
+	&print_detail;
+    }
+
+
+} elsif ($input{"tmpfile"} eq "") {   # this is not a next or prev page
+    
+    ## make sure we have a selectlist
+    if (!$selectlist) {
+	$selectlist = "*";
+    }
+    if ($DEBUG) {
+	$debug_msg .= "<h4>biocode_people_query</h4> calling build_query.";
+	$debug_msg .= "  selectlist: $selectlist<p>";
+    }
+    &build_query;  # query_utils.p
+    &do_regular_query;
+    
+
+} elsif ($input{"tmpfile"} ne "") {  # next or prev page
+    &use_tmp_file;
+}
+
+&make_log_entry("biocode_people",$whereclause,$special);
+
+### end
+
+sub do_regular_query {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In do_regular_query</h4>";}    
+
+    #&print_biocode_header($heading);
+    &print_biocode_header_css($heading);
+
+    if (!$whereclause || $whereclause !~ /^WHERE/) {
+	$whereclause = "nothing selected";
+	$num_matches = 0;
+	print "<p><h3>Error: Please go back and select at least one field to query on.</h3>"; 
+	if ($DEBUG) {
+	    print "<p>DEBUG_MSG<p>$debug_msg;";
+	}
+	&print_biocode_footer;
+	return;
+ 
+    }
+
+    $tmp = &get_multiple_records($query,"biocode");  # query_utils.p
+
+    if ($DEBUG) {$debug_msg .= "made tmp file tmp=$tmp ...\n";}
+
+    if ($DEBUG) {$debug_msg .=  "calling check_max ...\n";}
+    &check_max;  # query_utils.p
+    if ($default_max) {
+	$max_rows = 59;
+    }    
+    if ($num_matches eq 0) {
+	print "<h4>Sorry - no matches. Please try again.</h4>";
+        print "<small><b>Query:</b> $query</small><br>\n";
+	if ($DEBUG) {
+            print "<p>DEBUG_MSG<p>$debug_msg;";
+        }
+	&print_biocode_footer;
+	return;    
+    }
+    $query_results = $tmp;
+    if ($DEBUG) {$debug_msg .=  "calling print_multiple_records ...\n";}
+    if ($DEBUG) {$debug_msg .=  "<br>query_results: $query_results";}
+    if ($input{'advanced'} eq "T") {
+	&print_advanced_records;
+    } else {
+	&print_multiple_records;
+    }
+}
+
+
+
+sub use_tmp_file {
+
+    if ($DEBUG) {$debug_msg .= "<p>In use_tmp_file<p>\n";}
+
+    $whereclause = $input{'prevwhere'};
+    #&print_biocode_header($heading);
+    &print_biocode_header_css($heading);
+
+    &check_max; # query_utils.p
+    $query_results = "$tmp_file_location/biocode_people_query/$input{'tmpfile'}";
+
+    if ($DEBUG) {$debug_msg .=  "<h4>query_results: $query_results</h4>>\n";}
+    if ($input{'button_flag'} eq "ADVANCED") {
+	&print_advanced_records;
+    } else {
+	&print_multiple_records;
+    }
+}
+
+
+sub print_multiple_records {
+    
+    $some_pics=0;
+    if ($DEBUG) {$debug_msg .= "<h4>In print_multiple_records</h4>";}
+    &print_table_cells;
+
+    print "</table>\n";
+    if ($some_pics) {
+	print "<big>*</big> photo available<p>\n";
+    }
+    if ($DEBUG) {
+	print "<p>DEBUG_MSG<p>$debug_msg;";
+    }
+    &print_biocode_footer;
+
+}
+    
+
+sub print_table_cells {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In print_table_cells<h4>";}
+
+    $searchstring = $whereclause;
+    $searchstring =~ s/WHERE//g;
+
+    my $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+
+    ## stuff for download button
+    $dwhere = &strip($searchstring);
+    $dwhere =~ s/ /\+/g;
+
+    if ($download_on) {
+	$filesize = sprintf("%.1f",(-s $query_results) / 1000);
+	print "<p><a href=\"/cgi/biocode_people_query?download=$query_results";
+	print "&num=$num_matches&where=$dwhere\">Download your results</a> ";
+	print " (tab-delimited text file, $num_matches lines, file size = $filesize K)<p>";
+    }
+    print "<p><small><b>Query:</b> $query</small><br><p>\n";
+    
+    print "<p><small><i>Click on a name to see ";
+    print "the full record</i></small><br>\n";
+    print "<table border>";
+    print "<TR>";
+    print "<th><small>Last</th>\n";
+    print "<th><small>Full Name</th>\n";
+    print "<th><small>Num. Specimens</th>\n";
+    print "<th><small>Notes</th>\n";
+
+    open(FH, "$query_results") || die "Can't open tmp file for reading";
+    local($count) = 0;
+
+    while(<FH>) {
+	
+        if(($count < ($row_to_start + $max_rows)) && ($count >= $row_to_start)) {
+
+            @row = split(/\t/,$_);
+	    &fill_fields_with_values("biocode_people");
+
+	    $name_full_url = $name_full;
+	    $name_full_url =~ s/ /\+/g;
+	    $name_short =~ s/NULL//g;
+	    $email =~ s/NULL//g;
+	    $notes =~ s/NULL//g;
+
+            print "<tr>";
+	    print "<td>$name_last<br></td>\n";
+	    print "<td align=center><a href=/cgi/biocode_people_query?name_full=$name_full_url&one=T>";
+	    print "$name_full";
+	    print "</a><br></td>\n";
+	    ## status
+	    ## print "<td>";
+	    ## if ($collector && $submitter) {	print "collector, submitter";
+	    ## } elsif ($collector) { print "collector";
+	    ## } elsif ($submitter) {print "submitter";
+	    ## }
+	    ## print "<br></td>\n";
+	    print "<td align=center><a href=/cgi/biocode_query?where-biocode_collecting_event.Collector_List=$name_full_url&rel-biocode_collecting_event.Collector_List=like&$join>$num_specimens</a><br></td>\n";
+	    print "<td>$notes<br></td>\n";
+	}
+
+	print "</tr>";
+        $count++;
+    }
+    close(FH);
+}
+
+
+sub one_record_query {
+
+    ## query biocode table
+
+    if ($DEBUG) {$debug_msg .= "<h4>In one_record_query</h4><p>\n";}
+    $debug_msg .= "input: $input<p>\n";
+    $debug_msg .= "seq_num: |$input{'seq_num'}| specno_1: |$input{'specno_1'}|  collection: |$input{collection}|\n";
+
+    ## from the prelim results page
+    if ($input{'seq_num'}) {
+	$seq_num = $input{'seq_num'};
+	$whereclause = "WHERE seq_num = $seq_num";
+
+    } elsif ($input{'name_full'}) {
+	$name_full = $input{'name_full'};
+	$whereclause = "WHERE name_full=\"$name_full\"";
+
+    } else {
+	$bad_args_for_one_record_query = 1;
+        return;
+    }
+
+    $query = "select * from biocode_people $whereclause";
+    if ($DEBUG) {$debug_msg .= "query: $query<p>\n";}
+
+    @row = &get_one_record($query,"biocode");
+
+    local($count) = 0;
+    foreach $attr (@biocode_people_schema) {
+        $val{$attr} = $row[$count];
+        $count++;
+    }
+
+}
+
+sub print_detail {
+    
+    if ($DEBUG) {$debug_msg .= "<h4>In print_detail<\h4>\n";}
+    &clear_all_fields("biocode_people");
+    &fill_fields_with_values("biocode_people");
+    foreach $f (@biocode_people_schema) {
+	${$f} =~ s/NULL//g;
+    }
+
+    local($page_heading) = $heading . ": $name_full"; 
+    &print_biocode_header_css($heading);
+
+    print "<br>\n";
+    print "<p>\n";
+    print "<table cellpadding=5>";
+    print "<tr><td><h3>$name_full</h3></td></tr>\n";
+
+    if ($primary_name) {
+	$name_url = $primary_name;
+	$name_url =~ s/ /\+/g;
+	print "<td>";
+	print "<h4>See the record for <a href=/cgi/biocode_people_query?name_full=$name_url&one=T>$primary_name</h4>\n";
+	print "</td>\n";
+	print "</tr></table>";
+	&print_biocode_footer;
+	return;
+    }
+    ## bio
+
+    if ($bio) {
+	print "<tr><td>";
+	print "$bio";
+	print "</td></tr>\n";
+    }
+    print "</table>";
+    print "<table cellpadding=5>";
+    if ($affiliation) {
+	print "<tr align=right><td>Affiliation</td><td><b>$affiliation</b></td>";
+	print "</tr>\n";
+    }
+
+    if ($name_short) {
+	print "<tr><td align=right>Label Abbreviation</td><td>$name_short</td>";
+	print "</tr>\n";
+    }
+    if ($email) {
+	$print_email = $email;
+	$print_email =~ s/\@/ at /g;
+	print "<tr><td align=right>Email</td><td>$print_email</td>";
+	print "</tr>\n";
+    }
+
+    print "</table><br>";
+    print "<table cellpadding=5>";
+    print "<tr><td colspan=2>";
+    print "<ul>";
+
+    $name_full_url = $name_full;
+    $name_full_url =~ s/ /\+/g;
+
+    $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+
+
+    if ($num_specimens) {
+	
+	# local($url) = "/cgi/biocode_query?where-biocode_collecting_event.Collector=$name_full_url&where-biocode_collecting_event.Collector2=$name_full_url&where-biocode_collecting_event.Collector3=$name_full_url&where-biocode_collecting_event.Collector4=$name_full_url&where-biocode_collecting_event.Collector5=$name_full_url&where-biocode_collecting_event.Collector6=$name_full_url&where-biocode_collecting_event.Collector7=$name_full_url&where-biocode_collecting_event.Collector8=$name_full_url&special=OR&$join";
+	local($url) = "/cgi/biocode_query?where-biocode_collecting_event.Collector_List=$name_full_url&rel-biocode_collecting_event.Collector_List=like&special=OR&$join";
+
+	if ($num_specimens == 1) {
+	    print "<li><a href=$url>view $num_specimens specimen</a>";
+	} else {
+	    print "<li><a href=$url>view $num_specimens specimens</a>";
+        }
+    }
+    # collecting events
+    $ce_query = "select count(*) from biocode_collecting_event where collector_list like \"%$name_full%\"";
+    ($num_ce) = &get_one_record($ce_query,"biocode");
+    if($num_ce) {
+	$c_url = "/cgi/biocode_collect_event_query?table=biocode_collecting_event&where-Collector_List=$name_full_url&rel-Collector_List=contains";
+	print "<li><a href=$c_url>View $num_ce collecting events";
+    }
+
+    print "</ul></td>";
+    print "</tr>\n";
+
+    print "</table><br><p>";
+    &print_biocode_footer;
+    
+}
+
+
+sub download_biocode_people {
+    local($filename) = @_;
+    local($fields) = "";
+
+    #$fields = $displaylist;
+    $fields = &get_full_selectlist;
+    $fields =~ s/\,/\t/g;
+    $fields .= "\n";
+    
+    print "Content-type: text/text\n\n";
+
+    print "$fields\n\n";
+
+    open(FH, "$tmp_file_location/$script_name/$filename")
+        || die "Can't open '$filename' file for reading";
+    while(<FH>) {
+	print "$_";
+    }
+}
+
+sub get_simple_selectlist {
+    $selectlist = "";
+    foreach $e (@biocode_people_simple_display_schema) {
+	$selectlist .= "$e,";
+    }
+    $selectlist =~ s/,$//g;
+    return $selectlist;
+}
+
+
+sub get_full_selectlist {
+    $selectlist = "";
+    foreach $e (@biocode_people_schema) {
+        $selectlist .= "$e,";
+    }
+    $selectlist =~ s/,$//g;
+    return $selectlist;
+}
+

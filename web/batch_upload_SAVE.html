@@ -1,0 +1,94 @@
+<!--#include virtual="headers_footers/head1.html" -->
+
+Batch Upload Biocode Records
+
+<!--#include virtual="headers_footers/head2.html" -->
+
+       <!-- insert side bar links here -->
+
+<!--#include virtual="headers_footers/head3.html" -->
+
+
+<script>
+function checkAndSubmit() {
+    if (document.getElementById('excel_specimens').value == "") {
+        alert ("Please choose a file to upload");
+    } else {
+        if (!document.getElementById('collecting_event').checked &&
+            !document.getElementById('specimen').checked) {
+            alert ("You must check at least one box!");
+        } else {
+            document.myform.submit();
+        }
+    }
+}
+</script>
+<noscript>
+<h1>NOTE: Please turn on javascript to use this page!</h1>
+</noscript>
+<table cellpadding=5><tr><td>
+
+<b>Instructions to batch upload Excel records to Biocode: </b>
+<ol>
+<li>Download the <a href=/excel/BiocodeTemplate.xls>Biocode Excel Template</a> (note separate
+tabs for collecting events, specimen records, and tissues.)
+<br>
+[Most recent file dated March 31, 2010.]
+<li>Delete or move any columns as desired EXCEPT for required fields (in yellow).
+<li>Fill out the Excel sheet and save it.
+<li>Use the <b>Browse</b> button below to select the file to upload. 
+<li>Click Submit.
+<li>For help, look <a href=batch_upload_help.html>here</a>.
+</ol>
+<b>Note:</b> Collector names must already by in the database when loading (<a href=http://biocode.berkeley.edu/people_add_upd.html>Add new collector</a>).
+
+<FORM name=myform enctype=multipart/form-data ACTION=/cgi/biocode_excel_load METHOD=post>
+<table border width=100%>
+<td><INPUT size=70 type=file id=excel_specimens name=excel_specimens></td>
+</table>
+
+<p>
+<table width=100%>
+<tr>
+<td>
+Choose at least one worksheet:
+
+<br><input type=checkbox id=collecting_event name=collecting_event value=true>Collecting Events
+
+<br><input type=checkbox id=specimen name=specimen value=true>Specimens
+
+</td>
+
+<td>
+&nbsp;<p>
+&nbsp;<p>
+</td>
+
+<td valign=top>
+Project Code
+<select name="projectcode" size="1">
+<option>CMPI</option>
+<option>INDO</option>
+<option>IRLA</option>
+<option selected>MBIO</option>
+</select>
+<br>
+(Moorea Biocode = MBIO)
+</td>
+</tr>
+</table>
+
+<p>
+
+<br><INPUT TYPE=button VALUE=Submit onclick='checkAndSubmit();'><INPUT TYPE=reset VALUE=Reset>
+</FORM>
+    </td>
+    </tr>
+    </table>
+
+<p>
+<br>
+<p>
+
+
+<!--#include virtual="headers_footers/footer.html" -->

@@ -1,0 +1,32 @@
+# List of commands to carry out on the Moorea Server
+#ALTER TABLE biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+#ALTER TABLE test_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+#ALTER TABLE cubicfoot_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+#ALTER TABLE equip1_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+#ALTER TABLE lterp_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+ALTER TABLE minv_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+ALTER TABLE plants_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+ALTER TABLE tinv_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+ALTER TABLE vert_biocode add collecting_event_seq_num varchar(40) not null AFTER Coll_EventID_collector;
+
+update test_biocode, test_biocode_collecting_event set test_biocode.collecting_event_seq_num = test_biocode_collecting_event.seq_num where test_biocode.Coll_EventID = test_biocode_collecting_event.EventID;
+#update cubicfoot_biocode, cubicfoot_biocode_collecting_event set cubicfoot_biocode.collecting_event_seq_num = cubicfoot_biocode_collecting_event.seq_num where cubicfoot_biocode.Coll_EventID = cubicfoot_biocode_collecting_event.EventID;
+update equip1_biocode, equip1_biocode_collecting_event set equip1_biocode.collecting_event_seq_num = equip1_biocode_collecting_event.seq_num where equip1_biocode.Coll_EventID = equip1_biocode_collecting_event.EventID;
+#update lterp_biocode, lterp_biocode_collecting_event set lterp_biocode.collecting_event_seq_num = lterp_biocode_collecting_event.seq_num where lterp_biocode.Coll_EventID = lterp_biocode_collecting_event.EventID;
+update minv_biocode, minv_biocode_collecting_event set minv_biocode.collecting_event_seq_num = minv_biocode_collecting_event.seq_num where minv_biocode.Coll_EventID = minv_biocode_collecting_event.EventID;
+update plants_biocode, plants_biocode_collecting_event set plants_biocode.collecting_event_seq_num = plants_biocode_collecting_event.seq_num where plants_biocode.Coll_EventID = plants_biocode_collecting_event.EventID;
+update tinv_biocode, tinv_biocode_collecting_event set tinv_biocode.collecting_event_seq_num = tinv_biocode_collecting_event.seq_num where tinv_biocode.Coll_EventID = tinv_biocode_collecting_event.EventID;
+update vert_biocode, vert_biocode_collecting_event set vert_biocode.collecting_event_seq_num = vert_biocode_collecting_event.seq_num where vert_biocode.Coll_EventID = vert_biocode_collecting_event.EventID;
+
+
+CREATE TABLE fma.test_batch as select batch_id,batch_name from fma.batch where expedition='test';
+#CREATE TABLE fma.cubicfoot_batch as select batch_id,batch_name from fma.batch where expedition='cubicfoot';
+CREATE TABLE fma.equip1_batch as select batch_id,batch_name from fma.batch where expedition='equip1';
+#CREATE TABLE fma.lterp_batch as select batch_id,batch_name from fma.batch where expedition='lterp';
+CREATE TABLE fma.minv_batch as select batch_id,batch_name from fma.batch where expedition='minv';
+CREATE TABLE fma.plants_batch as select batch_id,batch_name from fma.batch where expedition='plants';
+CREATE TABLE fma.tinv_batch as select batch_id,batch_name from fma.batch where expedition='tinv';
+CREATE TABLE fma.vert_batch as select batch_id,batch_name from fma.batch where expedition='vert';
+
+alter table batch drop column expedition;
+truncate table batch;

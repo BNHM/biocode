@@ -1,0 +1,301 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+"http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>PhotoMatcher</title>
+<meta name='author' content='John Deck, based on scripts by Mike Foster (Cross-Browser.com)'>
+<meta name='description' content="PhotoMatcher">
+
+<link rel='stylesheet' type='text/css' href='/css/v3.css'>
+<link rel='stylesheet' type='text/css' href='/css/tpg_dyn.css'>
+<link rel='stylesheet' type='text/css' href='/css/login.css'>
+
+<script type='text/javascript' src='/js/login.js'></script>
+<script type='text/javascript' src='/js/config.js'></script>
+<script type='text/javascript' src='/js/v3site.js'></script>
+<script type='text/javascript' src='/js/cross-browser.com/x/x_core.js'></script>
+<script type='text/javascript' src='/js/cross-browser.com/x/x_event.js'></script>
+<script type='text/javascript' src='/js/ajax.js'></script>
+<script type='text/javascript' src='/js/imgGallery.js'></script>
+<script type='text/javascript' src='/js/data.js'></script>
+<script type='text/javascript' src='/js/meta.js'></script>
+<script type='text/javascript'>window.onload=function(){
+//	if (checkPassword()) {
+//		checkLogin();
+        gTabGroup=new xTabPanelGroup('tpg2', 560, 500, 40, 'tabPanel', 'tabGroup', 'tabDefault', 'tabSelected');
+		loadLists();
+		//xImgGallery();
+//	} else {
+//		logControlClick('login');
+//	}
+	// load a specimen
+ 	if (gSpecimenParam != "") {
+    	loadSpecimens("entered_specimen_num_collector");
+    }
+}</script>
+
+<script type='text/javascript' src='/js/cross-browser.com/x/lib/xaddeventlistener.js'></script>
+<script type='text/javascript' src='/js/cross-browser.com/x/lib/xtabpanelgroup.js'></script>
+
+<script type='text/javascript'>
+
+var gName="";
+var gOption="";
+var gValue="";
+var gDirectoryParam="";
+var gPhotoParam="";
+var gSpecimenParam="";
+if (location.search != "") {
+    var x = location.search.substr(1).split("&")
+    for (var i=0; i<x.length; i++) {
+        var y = x[i].split("=");
+        if (y[0]=="name") gName=unescape(y[1].replace(/\+/g, ' '));
+        if (y[0]=="option") gOption=unescape(y[1].replace(/\+/g, ' '));
+        if (y[0]=="value") gValue=unescape(y[1].replace(/\+/g, ' '));
+        if (y[0]=="directory") gDirectoryParam=unescape(y[1].replace(/\+/g, ' '));
+        if (y[0]=="photo") gPhotoParam=unescape(y[1].replace(/\+/g, ' '));
+        if (y[0]=="specimen") gSpecimenParam=unescape(y[1].replace(/\+/g, ' '));
+    }
+}
+
+function loadLists() {
+	// This populates the list of photographers (for the Photos Section)
+    getLists(document.myform.photographer,"photographerList",gName);
+
+	// The following populates the options for querying specimens
+    //getLists(document.myform.plate,"plateList","");
+    //getLists(document.myform.enteredby,"enteredbyList","");
+    //getLists(document.myform.phylum,"phylumList","");
+}
+
+function checkPassword() {
+	var user=getCookie('biocodeUser');
+	if (user == "" || !user) {
+		return false;
+	} else {
+		return true;
+	}
+}
+
+function getDirectory(pPhotographer) {
+    	gDirectory=getDirs("picDirs","&picturespath="+gPicturesPath+"&photographer="+pPhotographer);
+    	// re-set array 
+    	document.myform.directory.options.length=0;
+    	document.myform.directory.options[0] = new Option("Choose Your Directory");
+    	for ( var i=0; i < gDirectory.length; i++ ){
+        	document.myform.directory.options[i+1] = new Option(gDirectory[i].replace(/\//,""));
+    	}
+}
+
+/***********************************************
+* Disable "Enter" key in Form script- By Nurul Fadilah(nurul@REMOVETHISvolmedia.com)
+* This notice must stay intact for use
+* Visit http://www.dynamicdrive.com/ for full source code
+***********************************************/
+function handleEnter (field, event) {
+        var keyCode = event.keyCode ? event.keyCode : event.which ? event.which : event.charCode;
+        if (keyCode == 13) {
+            var i;
+            for (i = 0; i < field.form.elements.length; i++)
+                if (field == field.form.elements[i])
+                    break;
+            i = (i + 1) % field.form.elements.length;
+            field.form.elements[i].focus();
+			// programatically click the "go" button (this prevents form from being submitted)
+			document.myform.specimenGoButton.click();
+            return false;
+        }
+        else
+        return true;
+    }
+
+</script>
+
+<style type="text/css">
+  /*this is what we want the div to look like
+    when it is not showing*/
+  div.loading-invisible{
+    /*make invisible*/
+    display:none;
+  }
+
+  /*this is what we want the div to look like
+    when it IS showing*/
+  div.loading-visible{
+    /*make visible*/
+    display:block;
+
+    /*position it 200px down the screen*/
+    position:absolute;
+    top:200px;
+    left:0;
+    width:100%;
+    text-align:center;
+
+    /*in supporting browsers, make it
+      a little transparent*/
+    background:#fff;
+    opacity:.75;
+    border-top:1px solid #ddd;
+    border-bottom:1px solid #ddd;
+  }
+</style>
+</head>
+
+<body>
+
+<!--<div>
+	<div id=logcontrol onclick='logControlClick(this.innerHTML);'>login</div>
+   	<div id=spacer></div>
+	<div id=identity></div>
+</div>
+
+<div id=loginBox>
+    <form action="/cgi/biocode_checkpass" name=loginform id=loginform method="get">
+    <fieldset id="identification">
+    <legend>Identification</legend>
+    <dl>
+    <dt><label for="login">Login</label></dt>
+    <dd><select id=login name=entry_by></select>
+    <dt><label for="pwd">Password</label></dt>
+    <dd><input type="password" name="password" id="password" size="10" /></dd>
+    </dl>
+    <input type="hidden" value="/photomanager/photomatch.htm" name="refer">
+    <p><input type="submit" value="submit" />
+    </fieldset>
+    </form>
+</div>
+-->
+
+<div id="loading" class="loading-invisible">
+    <img src='/images/ajax-loader.gif'>
+</div>
+
+<center><h3>PhotoMatcher</h3></center>
+<form name=myform id=myform>
+
+<div id='leftColumn' class='column'> <!-- Begin left column -->
+<div class='leftContent'> <!-- Begin left content -->
+
+ 	<div id='gallerybox'>
+		<div id='controls'>
+			<b>Photos</b>
+						<br><font color=red>Upload new photos using the <a href='/photomanager/'>PhotoManager</a> (results will appear on this page)</font>
+                        <table>
+                        <tr><td>Photographer</td><td><select id=photographer name=photographer onchange='getDirectory(this.value);'></select></td></tr>
+                        <tr><td>Uploaded Directories</td><td><select id=directory name=directory onchange='xImgGallery();'></select> 
+                        <a href='javascript:getDirectory(document.getElementById("photographer").value);//xImgGallery();'>Refresh List</a></td></tr> 
+                        </table>
+
+			<i>Click to open a larger format image<br>
+			<!--Shift-click to add this image to specimen record at right</i>-->
+		</div>
+ 		<div id='navigation' align=center style='background-color:gray;'>
+  			<span id='prev'>&#171; Previous</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span id='back'>Gallery</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span id='next'>Next &#187;</span>
+ 		</div>
+ 		<div id='gallery'>
+ 		</div>
+		<div id='slideshow'>
+  			<div class='scon'><img id='s1'><div class='scap' id='sc1'>&nbsp;</div></div>
+		</div>
+		<div id='imagename'></div>
+ 	</div> <!-- end gallerybox-->
+
+</div> <!-- end leftContent -->
+</div> <!-- end leftColumn -->
+
+
+<div id='rightColumn' class='column'>
+        <b>Search for Specimens (choose one of the following)</b>
+        <table>
+        <!--<tr><td>Entered By</td><td><select id=enteredby name=enteredby onchange='loadSpecimens("enteredby");'></select></td></tr>-->
+        <!--<tr><td>Phylum</td><td><select id=phylum name=phylum onchange='//loadSpecimens("phylum");'></select></td></tr>-->
+        <!--<tr><td>Plate</td><td><select id=plate name=plate onchange='loadSpecimens("format_name96");'></select></td></tr>-->
+        <tr><td>Collector's Specimen #<br><i>(use % for wildcard at end)</i></td><td><input type=text id=entered_specimen_num_collector name=entered_specimen_num_collector value="" onkeypress="return handleEnter(this, event)">&nbsp;&nbsp;<input type=button name=specimenGoButton value=go onclick='loadSpecimens("entered_specimen_num_collector");'></td></tr>
+        </table>
+
+<div id='rightContent' class='rightContent' style='visibility:hidden;'>
+
+<div>
+<div id='tpg2' class='tabPanelGroup'>
+  <div class='tabGroup'>
+    <a href='#tpg22' class='tabDefault' id='specimentab'>Specimen</a><span class='linkDelim'>&nbsp;|&nbsp;</span>
+    <div onclick='javascript:listDetails();'><a href='#tpg23' class='tabDefault'>Batch Metadata</a></div><span class='linkDelim'>&nbsp;|&nbsp;</span>
+    <div onclick='javascript:listMeta();'><a href='#tpg24' class='tabDefault'>Match List</a></div>
+  </div>
+
+  	<div id='tpg22' class='tabPanel'>
+	<div>
+    	<!--<div style='float:left;margin:3px;'>
+        	<input type=button value='Save' onclick='save_onClick(true);'>
+    	</div>-->
+    	<div style='float:left;margin:3px;'>
+        	<input type=button value='Previous' onclick='prevspecimen_onClick();'>
+    	</div>
+    	<div style='float:left;margin:3px;'>
+        	<input type=button value='Next' onclick='nextspecimen_onClick();'>
+    	</div>
+	</div>
+
+   	<div class='clearAll'>&nbsp;</div>
+
+    <div style='float:left;width:500px;'>
+		<b style='color:#596380;font-size:medium;'>Specimen Data</b>
+	</div>
+
+	<div id='specimenData' style='float:left;width:500px;height:150px;overflow:auto;'>
+		<div style='float:left;'></div><div id='specimenmsg'></div>
+   		<div class='clearAll'>&nbsp;</div>
+		<div style='float:left;'><b>EnteredBy: </b></div><div style='float:left;' id='diventeredby'></div>
+   		<div class='clearAll'>&nbsp;</div>
+		<div style='float:left;'><b>Num: </b></div><div style='float:left;' id='specimen_num_collector'></div>
+   		<div class='clearAll'>&nbsp;</div>
+
+		<div style='float:left;' id='field1head'></div><div style='float:left;' id='field1'></div>
+   		<div class='clearAll'>&nbsp;</div>
+		<div style='float:left;' id='field2head'></div><div style='float:left;' id='field2'></div>
+   		<div class='clearAll'>&nbsp;</div>
+		<div style='float:left;' id='field3head'></div><div style='float:left;' id='field3'></div>
+   		<div class='clearAll'>&nbsp;</div>
+		<div style='float:left;' id='field4head'></div><div style='float:left;' id='field4'></div>
+   		<div class='clearAll'>&nbsp;</div>
+		<div style='float:left;' id='field5head'></div><div style='float:left;' id='field5'></div>
+   		<div class='clearAll'>&nbsp;</div>
+	</div>
+
+
+	<div class='clearAll'>&nbsp;</div>
+
+    <div style='float:left;width:500px;'>
+		<b style='color:#596380;font-size:medium;'>Photos associated with this specimen:&nbsp;&nbsp;</b>
+    	<!--<br>Shift-click to remove an image from this specimen record-->
+	</div>
+    <div class='clearAll'>&nbsp;</div>
+    <div class='float:left;'id='msgs'></div>
+
+  	</div> <!-- end specimen photo section -->
+
+
+  <div id='tpg23' class='tabPanel'>
+	<!--<a href='#' onclick='listDetails();'><i>Refresh</i></a>-->
+	<div id='details'></div>
+  </div>
+
+  <div id='tpg24' class='tabPanel'>
+	<a href='#' onclick='listMeta();'><i>Refresh</i></a>
+	<div id='meta'></div>
+  </div>
+</div>
+</div>
+
+</div> <!-- end rightContent -->
+</div> <!-- end rightColumn -->
+
+
+</form>
+</body>
+</html>
+
+

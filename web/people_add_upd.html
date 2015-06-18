@@ -1,0 +1,79 @@
+<!--#include virtual="headers_footers/title.html" -->
+Add/Update a Collector or Submitter
+<!--#include virtual="headers_footers/head1.html" -->
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg height=70 border=0></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Databases
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png height=70 border=0></a>
+</td>
+</tr>
+</table>
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+<blockquote>
+
+       <center>
+       <small>
+       <i>
+       Back to: <a href=/>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <p>
+       <b>
+       Instructions:
+       </b>
+       Use this form to add a new submitter or collector to the Moorea Biocode database,
+       or to correct information for an existing record.
+       <b><font color=red>
+       To use this form, you must be a registered data submitter</font></b>
+        (registered
+       data submitters are shown in the list below in #1.)
+ Complete all three items below, and then click <i>Next</i>.
+       
+<p>    
+       <FORM ACTION="/cgi/biocode_people_add_update" METHOD="post">
+       <input type=hidden name=step value=ckpasswd>
+
+       <b>1. Select your name:</b>
+       <select size=1 name=form_completed_by>
+       <option selected>
+       <!--#include virtual="select_lists/submitters.txt" -->
+       </select>
+       <p>
+       <b>2. Enter your password: <input name=password type=password>
+
+       <p>
+       <b>3. What do you wish to do?</b>
+       <p>
+       <dd><input type=radio checked name=action value=new> Add a new person
+       <dd><input type=radio name=action value=change>
+            Change an existing record for:
+	    <select size=1 name=name_full>
+	           <option selected>
+		   <!--#include virtual="select_lists/people.txt" -->
+           </select>
+
+<p>
+
+<p>
+       <input type=submit value="Next ">
+       </form>
+</blockquote>
+
+<!--#include virtual="headers_footers/footer.html" -->
+
+

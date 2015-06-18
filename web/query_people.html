@@ -1,0 +1,108 @@
+<!--#include virtual="headers_footers/title.html" -->
+    Query the Moorea Biocode People Database
+<!--#include virtual="headers_footers/head1.html" -->
+
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg border=0 height=70></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Databases
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png border=0 height=70></a>
+</td>
+</tr>
+</table>
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+<blockquote>
+       <center>
+       <small>
+       <i>
+       Back to: <a href=/>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <p>
+<b>Quick List</b>:
+
+<dd><li><a href="/cgi/biocode_people_query?where-index_date=1900-01-01&rel-index_date=gt&orderby=name_last">View all people</a>
+
+<p><b>Look up a name</b>:
+<p>
+<FORM ACTION="/cgi/biocode_people_query" METHOD="post">
+<input type=hidden name=orderby value=name_last>
+<table>
+
+<tr>
+<td align=right>Full name</td>
+<td><select name="rel-name_full">
+<option selected>contains
+                <option>begins with
+                <option>equals
+                </select>&nbsp;
+</td>
+<td><input name=where-name_full>
+<small><i>case unimportant</i></small>
+</td>
+</tr>
+
+<tr>
+<td align=right>Last name</td>
+<td><select name="rel-name_last">
+                <option>contains
+                <option selected>begins with
+                <option>equals
+                </select>&nbsp;
+</td>
+<td><input name=where-name_last>
+<small><i>case unimportant</i></small>
+</td>
+</tr>
+
+<tr>
+<td align=right>Affiliation</td>
+<td><select name="rel-affiliation">
+<option selected>contains
+                <option>begins with
+                <option>equals
+                </select>&nbsp;
+</td>
+<td><input name=where-affiliation>
+<small><i>example: "Essig"</i></small>
+</td>
+</tr>
+
+             <tr>
+              <td><br></td>
+              <td align=left colspan=2>
+              <input type="submit" name="Search" value="Search">
+              <input type="reset" name="Reset" value="Reset">
+              </td>
+            </tr>
+
+
+</table>
+</form>
+<p>
+
+<br>
+<p>
+<br>
+See also: <a href=people_add_upd.html>Add a new name</a> to the People database
+<br>
+<p>
+<br>
+</blockquote>
+<!--#include virtual="headers_footers/footer.html" -->
+
+

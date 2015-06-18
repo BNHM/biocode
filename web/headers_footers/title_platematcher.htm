@@ -1,0 +1,251 @@
+<head>
+
+<script type='text/javascript' src="/js/config.js"></script>
+<script type='text/javascript' src='/js/login.js'></script>
+<script type='text/javascript' src='/js/ajax.js'></script>
+<script type='text/javascript' src='/js/data.js'></script>
+
+<link rel='stylesheet' type='text/css' href='/css/login.css'>
+<link rel='stylesheet' type='text/css' href='/css/platematcher.css'>
+
+<script>
+var gInitialCellValue="";
+function setFocus(a) {
+    gInitialCellValue=a.value;
+}
+
+function xGetURLArguments() {
+  var idx = location.href.indexOf('?');
+  var params = new Array();
+  if (idx != -1) {
+    var pairs = location.href.substring(idx+1, location.href.length).split('&');
+    for (var i=0; i<pairs.length; i++) {
+      nameVal = pairs[i].split('=');
+      params[i] = nameVal[1];
+      params[nameVal[0]] = nameVal[1];
+    }
+  }
+  return params;
+}
+arrParams=xGetURLArguments();
+
+
+// Build the select box for tissues
+// argument pArrValues is an array with 
+//   0=specimen_num_collector.tissue
+//   1=?
+//   2-n= tissue_nums available for this specimen_num_collector
+/*
+function buildTissueSelect(pArrTissueSelect,pArrValues) {
+    select="";
+    // Set the Proper index
+    arrTissue_id=pArrValues[0].split(".");
+    tissue_num=arrTissue_id[1];
+
+    // Add in the "add new" option
+    //var elOptNew = document.createElement('option');
+    //elOptNew.text = "Add";
+    //elOptNew.value = "Add";
+    //try {
+    //    pArrTissueSelect.add(elOptNew, null); // standards compliant; doesn't work in IE
+    //} catch(ex) {
+    //    pArrTissueSelect.add(elOptNew); // IE only
+   // }
+
+    for (var i=2; i < pArrValues.length; i++) {
+        var elOptNew = document.createElement('option');
+        elOptNew.text = pArrValues[i];
+        elOptNew.value = pArrValues[i];
+        if (pArrValues[i]==tissue_num) {
+            elOptNew.selected=true;
+        }
+        try {
+            pArrTissueSelect.add(elOptNew, null); // standards compliant; doesn't work in IE
+        } catch(ex) {
+            pArrTissueSelect.add(elOptNew); // IE only
+        }
+    }
+}
+*/
+
+function addPlate() {
+    select=document.getElementById('batch');
+    newTissueNameInput=document.getElementById('newTissueName_id');
+    var elOptNew = document.createElement('option');
+    elOptNew.text = newTissueNameInput.value;
+    elOptNew.value = newTissueNameInput.value;
+    elOptNew.selected=true;
+    try {
+        select.add(elOptNew, null); // standards compliant; doesn't work in IE
+    } catch(ex) {
+        select.add(elOptNew); // IE only
+    }
+}
+
+function lookupTissues(a) {
+    var arrTissues=new Array();
+    var arrValues=new Array();
+    arrTissues.length=0;
+    arrValues.length=0;
+    var strURL="";
+    // Insert Record
+    if (a.value!="") {
+        strURL="/cgi/biocode_fma_platematch?specimen_num_collector="+a.value+"&format_name96="+format_name96+"&well_number96="+a.name;
+        strData= xmlhttpString(strURL,"GET");
+        arrNotes=strData.split(":::");
+        newTissueNumber=arrNotes[1].split("|");
+        // Check for an error message
+        if (arrNotes[0] != "") {
+            // New value gone awry
+            if (a.value!="") {
+                document.getElementById(a.name).value=gInitialCellValue;
+                alert("Error Inserting: "+ arrNotes[0] + " Cell has been re-set to initial value.");
+            } 
+        } else {
+            populateSingleBox(a.name,newTissueNumber,a.value,arrNotes[3]);
+        }
+    // Delete Record
+    } else {
+        strURL="/cgi/biocode_fma_platematch?specimen_num_collector=deleteme&format_name96="+format_name96+"&well_number96="+a.name;
+        strData= xmlhttpString(strURL,"GET");
+        arrNotes=strData.split(":::");
+        newTissueNumber=arrNotes[1].split("|");
+        if (arrNotes[0] != "") {
+            alert("Error Deleting: "+arrNotes[0]+ " Cell has been re-set to initial value.");
+            a.value=gInitialCellValue;
+        } else {
+            document.getElementById(a.id+"-tissue_num").innerHTML="";
+            document.getElementById(a.id+"-this_tissue").innerHTML="";
+            document.getElementById(a.id+"-link").innerHTML="";
+            alert("deleted value in cell");
+        }
+    }
+
+    return false;
+}
+
+function buildWellTable(a){
+    var strRet="";
+    var strNextChar="A";
+    strRet+="<table cellpadding=0 cellspacing=0 border=1>";
+    // Numbers
+    strRet+="<tr>";
+    for (j=0;j<=12;j++) {
+        if (j>0) { 
+            strRet+="<td><b>"+j+"</b></td>";
+        } else {
+            strRet+="<td><b></b></td>";
+        }
+    }
+    strRet+="</tr>";
+    for (i=1;i<=8;i++) {
+        var strNextNum="0";
+        // Letters
+        strRet+="<tr><td><b>"+strNextChar+"</b></td>";
+        for (j=1;j<=12;j++) {
+            var strNextNum=parseInt(strNextNum)+1;
+	    if (strNextNum < 10) {
+		strDisplayNum='0'+strNextNum;
+	    } else {
+		strDisplayNum=strNextNum;
+	    }
+            strWell=strNextChar+strDisplayNum;
+	    // for the input FORM
+            if (a=="platematcher") {
+                strRet+="<td id='cell-"+strWell+"' valign=top>";
+                // Input Text box
+                strRet+="<input id='"+strWell+"' type=textbox name='"+strWell+"' onfocus='setFocus(this);' onchange='lookupTissues(this);' value='' class='well'>";
+                // Link to Tissues
+                strRet+="&nbsp;<div id='"+strWell+"-link' name=''  class='link'></div>";
+                // Select box for tissues
+               // strRet+="<select id='"+strWell+"-tissue_num' name='"+strWell+"-tissue_num'  class='tissue_num'><option value='New'>New</option></select>";
+                strRet+="<div id='"+strWell+"-tissue_num' name='"+strWell+"-tissue_num' class='tissue_num'></div>";
+                // Display THIS tissue number
+                strRet+="&nbsp;&nbsp;<div id='"+strWell+"-this_tissue' name='' class='this_tissue'></div>";
+                strRet+="&nbsp;<div id='"+strWell+"-photo' name=''></div>";
+                strRet+="</td>";
+            } else {
+                strRet+="<td id='"+strWell+"' style='width:90px;height:30px;'><br></td>";
+            }
+        }
+        strNextChar=String.fromCharCode(strNextChar.charCodeAt(0)+1);
+        strRet+="</tr>";
+    }
+    strRet+="</table>";
+    return strRet;
+}
+// Function to populate just a single box
+function populateSingleBox(well_num,tissue_num,name,photo) {
+    document.getElementById(well_num+"-tissue_num").innerHTML="Tissue#";
+    document.getElementById(well_num+"-this_tissue").innerHTML=tissue_num;
+	if (photo) {
+    	document.getElementById(well_num+"-photo").innerHTML="<a href='http://calphotos.berkeley.edu/cgi/img_query?where-specimen_no="+photo+"&where-museum=Moorea+Biocode' target=_blank><img src='/graphics/camera_small.gif' border=0></a>";
+	}
+    document.getElementById(well_num+"-link").name=name;
+    document.getElementById(well_num+"-link").innerHTML="<img src='/images/info.png' width=20 border=0>";
+    document.getElementById(well_num+"-link").onclick=function () {
+        url="/cgi/biocode_tissue_query?table=biocode_tissue&jointables=biocode%2Cbiocode_tissue&joincolumns=biocode.bnhm_id+%3D+biocode_tissue.bnhm_id&rel-biocode.Specimen_Num_Collector=equals&where-biocode.Specimen_Num_Collector="+this.name;
+        newwindow=window.open(url,'name','height=400,width=800');
+    }
+}
+
+function populateData(strData,b) {
+    arrHeader=strData.split(":::");
+    // Assign SQL to SQL statement section
+    document.getElementById('SQL').innerHTML=arrHeader[0];
+    // Assign the rest of the data
+    arrLines=arrHeader[1].split("\n");
+    for (i=0;i<arrLines.length;i++) {
+        arrValues=arrLines[i].split("|");
+        if (gc('standardprefix') != "") {
+            arrTwoParts=arrValues[0].split(gc('standardprefix'));
+            adjValue=arrTwoParts[1]; 
+        } else {
+            adjValue=arrValues[0]; 
+        }
+        // Obtain the selected tissue_num 
+        arrTissue_id=arrValues[0].split(".");
+        tissue_num=arrTissue_id[1];
+
+	// use VALUE for platematcher
+        if (b=="platematcher") {
+            var wholevalue = adjValue.split('.');
+            document.getElementById(arrValues[1]).value=wholevalue[0];
+            //buildTissueSelect(document.getElementById(arrValues[1]+"-tissue_num"),arrValues);
+            populateSingleBox(arrValues[1],tissue_num,wholevalue[0],arrValues[3]);
+	// use innerHTML for plateviewer
+        } else {
+            document.getElementById(arrValues[1]).innerHTML=adjValue;
+        }
+    }    
+}
+
+function plateMatcher() {
+    var strNextChar="A";
+    strURL='/cgi/biocode_fma_platematch?expedition='+gc('code')+'&format_name96='+format_name96+'&submit=Save&prefix='+gc('standardprefix');
+    for (i=1;i<=8;i++) {
+        var strNextNum="0";
+        // Letters
+        for (j=1;j<=12;j++) {
+            var strNextNum=parseInt(strNextNum)+1;
+	    if (strNextNum < 10) {
+		strDisplayNum='0'+strNextNum;
+	    } else {
+		strDisplayNum=strNextNum;
+	    }
+            strWell=strNextChar+strDisplayNum;
+            value=document.getElementById(strWell).value;
+            if (value != "") {
+                tissuevalue=document.getElementById(strWell+"-tissue_num").value;
+                strURL+="&"+strWell+"="+value+"."+tissuevalue;
+            }
+        }
+        strNextChar=String.fromCharCode(strNextChar.charCodeAt(0)+1);
+    }
+    var strVal=xmlhttpString(strURL,"GET");
+    if (strVal!="1") alert(strVal);
+    else alert('success!');
+}
+
+</script>
+<title>

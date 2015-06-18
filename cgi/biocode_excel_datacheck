@@ -1,0 +1,1350 @@
+#!/usr/bin/perl
+# biocode_datacheck -  Joyce Gross -  March 2009
+
+# subroutines for checking specific fields loading into the Biocode database
+#   includes: specimen fields, collevent fields, and tissue fields
+
+
+require "myquery_utils.p";
+require "myschema.p";
+require "utils.p";
+require "cgi-lib.pl";   # deals with multipart form data
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+
+sub check_worksheet_names {
+
+    my ($s, $collevent_sheet_exists, $specimen_sheet_exists) = @_;
+    my $err_msg = "";
+
+
+	# Set these variables -- overrides previous behaviour accepting input from webpage
+	# and instead relies on bioValidator to correctly send data
+    if(!$s->{spreadsheet}->{"Collecting_Events"}) {
+    		$collevent_sheet_exists="false";
+    }
+    if(!$s->{spreadsheet}->{"Specimens"}) {
+    	$specimen_sheet_exists = "false";
+    }
+    #if($collevent_sheet_exists eq "true" && !$s->{spreadsheet}->{"Collecting_Events"}) {
+    #    $err_msg .= "<li>Error .... There is no worksheet named \"<b>Collecting_Events</b>\" in your Excel file, ";
+    #    $err_msg .= "but you checked the Collecting Events box on the upload form (Note the underscore in the name!).<br>";
+    #}
+    #if($specimen_sheet_exists eq "true" && !$s->{spreadsheet}->{"Specimens"}) {
+    #    $err_msg .= "<li>Error .... There is no worksheet named \"<b>Specimens</b>\" in your Excel file, ";
+    #    $err_msg .= "but you checked the Specimens box on the upload form.<br>";
+    #}
+
+    if(!$specimen_sheet_exists && !$collevent_sheet_exists) {
+        $err_msg .= "<li>Error .... You didn't specify which type of data you want to load: <b>Collecting_Events</b> or <b>Specimens</b>.<br>";
+    }
+  
+    if(!$s->{spreadsheet}->{"Specimens"} && !$s->{spreadsheet}->{"Collecting_Events"}) {
+        $err_msg .= "<li>Error .... Your Excel file does not have any worksheets named <b>Collecting_Events</b> or <b>Specimens</b>.<br>";
+    }
+
+    return $err_msg;
+
+}
+
+
+sub check_collevent_allowed_fields {
+    # this relies on the global variable excel_collevent_allowable
+    my (@header) = @_;
+    my $err_msg = "";
+    my $warning_msg = "";
+
+    my %allowable_collevent = ();
+
+    for (@excel_collevent_allowable) { $allowable_collevent{$_} = 1 }
+
+    foreach my $field (@header) {
+        if (!$allowable_collevent{$field}) {
+            if($field eq "ProjectName") {
+                # it's the ProjectName field, no longer in use 2009-12-11
+                next;
+            }
+            # $err_msg .= "<li>Error .... Column <b>$field</b> in first line of Collecting_Events sheet is not an allowed field.<br>";
+            $warning_msg .= "<li>Warning .... Column <b>$field</b> in first line of Collecting_Events sheet is not an allowed field. ";
+            $warning_msg .= "No data in that column will be loaded. ";
+            $warning_msg .= "Look <a href=/sql/biocode_collecting_event.txt>here</a> for a list of allowed columns.<br>";
+        }
+    }
+
+    return $warning_msg;
+}
+
+sub check_specimen_allowed_fields {
+    # this relies on the global variable excel_spec_allowable
+    my (@header) = @_;
+    my $err_msg = "";
+    my $warning_msg = "";
+
+    my %allowable_specimen = ();
+
+    for (@excel_spec_allowable) { $allowable_specimen{$_} = 1 }
+
+    foreach my $field (@header) {
+        if (!$allowable_specimen{$field}) {
+            # $err_msg .= "<li>Error .... Column <b>$field</b> in first line of Specimens sheet is not an allowed field.<br>";
+            $warning_msg .= "<li>Warning .... Column <b>$field</b> in first line of Specimens sheet is not an allowed field. ";
+            $warning_msg .= "No data in that column will be loaded. ";
+            $warning_msg .= "Look <a href=/sql/biocode.txt>here</a> for a list of allowed columns.<br>";
+        }
+    }
+
+    return $warning_msg;
+}
+
+sub check_specimen_header {
+    # this relies on the global variable required_specimen_fields
+    my (@header) = @_;
+    my $err_msg = "";
+
+    my %is_required_specimen = ();
+
+    for (@header) { $is_required_specimen{$_} = 1 }
+
+    foreach my $req (@required_specimen_fields) {
+        if (!$is_required_specimen{$req}) {
+            $err_msg .= "<li>Error .... Required specimen field <b>$req</b> in first line of Specimen sheet does not exist.<br>";
+        }
+    }
+    return $err_msg;
+
+}
+
+sub check_collevent_header {
+    # this relies on the global variable required_collevent_fields
+    my (@header) = @_;
+    my $err_msg = "";
+
+    my %is_required_collevent = ();
+
+    for (@header) { $is_required_collevent{$_} = 1 }
+
+    foreach my $req (@required_collevent_fields) {
+        if (!$is_required_collevent{$req}) {
+            $err_msg .= "<li>Error .... Required collecting event field <b>$req</b> in first line of Collecting_Events sheet does not exist.<br>";
+        }
+    }
+
+    return $err_msg;
+
+}
+
+
+sub check_specimen_required_fields {
+    # this relies on the global variable required_specimen_fields
+    my ($s) = @_;
+    my $err_msg = "";
+
+    foreach my $req (@required_specimen_fields) {
+
+        my $val = $s->getColumn("Specimens","$req");
+        $val = &strip($val);
+
+        my $line_count = 1;
+        foreach my $val ($s->getColumn("Specimens","$req")) {
+            $line_count++;
+            # print "line_count: $line_count $req $val<br>";
+            $val = &strip($val);
+            if (!$val) {
+                $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count: Required specimen field <b>$req</b> does not exist.<br>";
+            }
+        }
+    }
+
+    return $err_msg;
+
+}
+
+
+sub check_collevent_required_fields {
+    # this relies on the global variable required_collevent_fields
+    my ($s) = @_;
+    my $err_msg = "";
+
+    foreach my $req (@required_collevent_fields) {
+
+        my $line_count = 1;
+
+        foreach my $val ($s->getColumn("Collecting_Events","$req")) {
+            $line_count++;
+            $val = &strip($val);
+            if (!$val) {
+                $err_msg .= "<li>Error .... Collecting Events Worksheet, Row $line_count: Required collecting event field <b>$req</b> does not exist.<br>";
+           	}
+        }
+    }
+
+    return $err_msg;
+}
+
+
+
+sub check_for_duplicate_Coll_EventID_collector_values {
+    my ($s) = @_;
+    my $err_msg = "";
+    my %colleventnos_seen=(); 
+    my $line_count = 1;
+
+    foreach my $Coll_EventID_collector ($s->getColumn("Collecting_Events","Coll_EventID_collector")) {
+        $Coll_EventID_collector= &strip($Coll_EventID_collector);
+        $line_count++;
+        if ($colleventnos_seen{$Coll_EventID_collector}) {
+            $err_msg .= "<li>Error .... Collecting Events Worksheet, Row $line_count: Coll_EventID_collector \"$Coll_EventID_collector\" was already used on Row $colleventnos_seen{$Coll_EventID_collector}";
+        } else {
+            $colleventnos_seen{$Coll_EventID_collector}  = $line_count;
+        }
+    }
+
+    return $err_msg;
+
+}
+
+
+sub check_for_duplicate_Specimen_Num_Collector_values {
+    my ($s) = @_;
+    my $err_msg = "";
+    my %specnos_seen=(); 
+    my $line_count = 1;
+
+    foreach my $Specimen_Num_Collector ($s->getColumn("Specimens","Specimen_Num_Collector")) {
+        $Specimen_Num_Collector = &strip($Specimen_Num_Collector);
+        $line_count++;
+        if ($specnos_seen{$Specimen_Num_Collector}) {
+            $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count: Specimen_Num_Collector \"$Specimen_Num_Collector\" was already used on Row $specnos_seen{$Specimen_Num_Collector}";
+        } else {
+            $specnos_seen{$Specimen_Num_Collector}  = $line_count;
+        }
+    }
+
+    return $err_msg;
+
+}
+
+
+sub check_for_valid_Specimen_Num_Collector_values {
+    my ($s) = @_;
+    my $err_msg = "";
+    my $line_count = 1;
+
+    foreach my $Specimen_Num_Collector ($s->getColumn("Specimens","Specimen_Num_Collector")) {
+        $Specimen_Num_Collector = &strip($Specimen_Num_Collector);
+        $line_count++;
+        if($Specimen_Num_Collector =~ /^BMOO/) {
+            if($Specimen_Num_Collector !~ /^BMOO-\d\d\d\d\d/) {
+                $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count: Specimen_Num_Collector \"$Specimen_Num_Collector\" is not a valid Specimen_Num_Collector. ";
+                $err_msg .= "BMOO numbers have to be in this format: BMOO-01234 (BMOO + dash + 5 digits).";
+            }
+        }
+    }
+
+    return $err_msg;
+
+}
+
+
+
+
+sub check_collector_name_columns {
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+    my $query = "";
+
+    my @possible_collector_fields = qw(Collector Collector2 Collector3 Collector4 Collector5 Collector6 Collector7 Collector8);
+
+    foreach my $possible_collector_field (@possible_collector_fields) {
+        my $line_count = 1;
+        foreach my $collector ($s->getColumn("$worksheet","$possible_collector_field")) {
+            $line_count++;
+            $collector = &strip($collector);
+            if($collector) {
+                $query = "select count(*) from biocode_people where name_full = '$collector'";
+                ($count) = &get_one_record($query,"biocode");
+                # print "query: $query $count<br>";
+                if(!$count) {
+                    $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: Collector <b>$collector</b> is not in the database. ";
+                    $err_msg .= "<small>[Please check for spelling of name <a href=/query_people.html>here</a>. ";
+                    $err_msg .= "If not in database, add name <a href=/people_add_upd.html>here</a>.]</small><br>";
+                }
+            }
+        }
+
+    }
+
+    return $err_msg;
+}
+
+
+sub fill_Collector_List_values {
+
+    my ($s) = @_;
+
+    my @possible_collector_fields = qw(Collector Collector2 Collector3 Collector4 Collector5 Collector6 Collector7 Collector8);
+
+    undef %collector_list_hash;
+    for (@possible_collector_fields) { $collector_list_hash{$_} = 1; }
+
+    # for my $rowcount (  $s->getColumn("Specimens","rowcount")) {           # March 8 2010 .. jg .. changed to line below ... ???
+    for my $rowcount (  $s->getColumn("Collecting_Events","rowcount")) {     # March 8 2010 .. jg .. changed from above line ... ???
+
+        my $Collector_List = "";
+        $cnt = 1;
+
+        foreach $column ($s->getHeader("Collecting_Events")) {
+
+            # must be an existing column name but not a tissue
+            if ($collector_list_hash{$column}) {
+
+                 my $thisvalue = strip($s->{spreadsheet}->{ "Collecting_Events" }->{ $column}->{ $rowcount });
+                 if($thisvalue) {
+                     if ($cnt > 1) {
+                         $Collector_List .= ", ";
+                     }               
+                     $Collector_List .= "$thisvalue";
+                 }
+                 $cnt++;
+            }
+        }
+
+        $s->{spreadsheet}->{ "Collecting_Events" }->{'Collector_List'}->{$rowcount} = $Collector_List;
+        # print "collector_list:" . $s->{spreadsheet}->{ "Collecting_Events" }->{'Collector_List'}->{$rowcount}. "<br>";
+
+    }
+
+    return $s;
+}
+
+
+sub check_enteredby_columns {
+
+    # EnteredBy is a required field on both the "Specimens" and "Collecting_Events" worksheets.
+
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+    my $query = "";
+
+    my $line_count = 1;
+    foreach my $enteredby ($s->getColumn("$worksheet","EnteredBy")) {
+        $line_count++;
+        $enteredby = &strip($enteredby);
+        if($enteredby) {
+            $query = "select count(*) from biocode_people where name_full = '$enteredby'";
+            ($count) = &get_one_record($query,"biocode");
+            # print "query: $query $count<br>";
+            if(!$count) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: EnteredBy <b>$enteredby</b> is not in the database. ";
+                $err_msg .= "<small>[Please check for spelling of name <a href=/query_people.html>here</a>]</small>.";
+                $err_msg .= "<br>";
+            }
+        } else {
+            # This is already done in another subroutine
+            # $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: <b>Entered By</b> is a required field.<br>";
+        }
+    }
+    return $err_msg;
+}
+
+
+
+sub check_date_collected {
+
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+    my $err_msg_year = "";
+    my $err_msg_month_day = "";
+
+    my $line_count = 1;
+    my $line_count_msg = 2;
+
+    foreach my $YearCollected ($s->getColumn("$worksheet","YearCollected")) {
+        $line_count++;
+        $YearCollected = &strip($YearCollected);
+        if($YearCollected ) {
+            $err_msg_year = &check_year_value($YearCollected);
+            if($err_msg_year) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: $err_msg_year<br>";
+            }
+        }
+    }
+
+    $line_count = 1;
+
+    foreach my $MonthCollected ($s->getColumn("$worksheet","MonthCollected")) {
+        $line_count++;
+        $line_count_msg++;
+        my $DayCollected = $s->{spreadsheet}->{$worksheet}->{'DayCollected'}->{$line_count};
+        my $MonthCollected = $s->{spreadsheet}->{$worksheet}->{'MonthCollected'}->{$line_count};
+        $DayCollected = &strip($DayCollected);
+        $MonthCollected = &strip($MonthCollected);
+
+        if($MonthCollected ) {
+            $err_msg_month_day = &check_month_day_values($MonthCollected,$DayCollected);
+            if($err_msg_month_day) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count_msg: $err_msg_month_day<br>";
+            }
+        } elsif($DayCollected) {
+            $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count_msg: Day Collected entered with no Month Collected.<br>";
+        }
+    }
+
+
+    return $err_msg;
+
+}
+
+sub check_verbatim_latlong_columns {
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+    my $err_msg_verbatim_latlong = "";
+
+    my $line_count = 0;
+
+
+    foreach my $VerbatimLatitude ($s->getColumn("$worksheet","VerbatimLatitude")) {
+
+        $line_count++;
+        my $VerbatimLatitude = $s->{spreadsheet}->{$worksheet}->{'VerbatimLatitude'}->{$line_count};
+        my $VerbatimLongitude = $s->{spreadsheet}->{$worksheet}->{'VerbatimLongitude'}->{$line_count};
+
+        $VerbatimLatitude = &strip($VerbatimLatitude);
+        $VerbatimLongitude = &strip($VerbatimLongitude);
+
+        if($VerbatimLatitude || $VerbatimLongitude) {
+
+            if(!strip($s->{spreadsheet}->{$worksheet}->{'DecimalLatitude'}->{$line_count})
+                && !strip($s->{spreadsheet}->{$worksheet}->{'DecimalLongitude'}->{$line_count})) {
+                # only convert if there is no DecimalLatitude and DecimalLongitude already
+
+                my ($DecimalLatitude_from_verbatim,$DecimalLongitude_from_verbatim,$err_msg_verbatim_lat_long)
+                        = &convert_verbatim_lat_long_values($VerbatimLatitude,$VerbatimLongitude);
+
+                if($err_msg_verbatim_lat_long) {
+                    $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: $err_msg_verbatim_lat_long<br>";
+                } else {
+                    $s->{spreadsheet}->{$worksheet}->{'DecimalLatitude'}->{$line_count} = $DecimalLatitude_from_verbatim;
+                    $s->{spreadsheet}->{$worksheet}->{'DecimalLongitude'}->{$line_count} = $DecimalLongitude_from_verbatim;
+                }
+            }
+        }
+    }
+
+
+    $line_count = 0;
+
+    foreach my $VerbatimLatitude2 ($s->getColumn("$worksheet","VerbatimLatitude2")) {
+
+        $line_count++;
+        my $VerbatimLongitude2 = $s->{spreadsheet}->{$worksheet}->{'VerbatimLongitude2'}->{$line_count};
+
+        $VerbatimLatitude2 = &strip($VerbatimLatitude2);
+        $VerbatimLongitude2 = &strip($VerbatimLongitude2);
+
+        if($VerbatimLatitude2 || $VerbatimLongitude2) {
+
+            if(!strip($s->{spreadsheet}->{$worksheet}->{'DecimalLatitude2'}->{$line_count})
+                && !strip($s->{spreadsheet}->{$worksheet}->{'DecimalLongitude2'}->{$line_count})) {
+
+                # only convert if there is no DecimalLatitude2 and DecimalLongitude2 already
+
+                my ($DecimalLatitude2_from_verbatim,$DecimalLongitude2_from_verbatim,$err_msg_verbatim_lat_long)
+                        = &convert_verbatim_lat_long_values($VerbatimLatitude2,$VerbatimLongitude2);
+
+                if($err_msg_verbatim_lat_long) {
+                    $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: $err_msg_verbatim_lat_long<br>";
+                } else {
+                    $s->{spreadsheet}->{$worksheet}->{'DecimalLatitude2'}->{$line_count} = $DecimalLatitude2_from_verbatim;
+                    $s->{spreadsheet}->{$worksheet}->{'DecimalLongitude2'}->{$line_count} = $DecimalLongitude2_from_verbatim;
+                }
+            }
+        }
+    }
+
+    return ($s, $err_msg);
+}
+
+
+sub check_geography_columns {
+
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+    my $err_msg_geography = "";
+
+    my $line_count = 1;
+
+    foreach my $DecimalLatitude ($s->getColumn("$worksheet","DecimalLatitude")) {
+        my $DecimalLatitude = $s->{spreadsheet}->{$worksheet}->{'DecimalLatitude'}->{$line_count};
+        my $DecimalLongitude = $s->{spreadsheet}->{$worksheet}->{'DecimalLongitude'}->{$line_count};
+        my $DecimalLatitude2 = $s->{spreadsheet}->{$worksheet}->{'DecimalLatitude2'}->{$line_count};
+        my $DecimalLongitude2 = $s->{spreadsheet}->{$worksheet}->{'DecimalLongitude2'}->{$line_count};
+
+        $line_count++;
+
+        $DecimalLatitude = &strip($DecimalLatitude);
+        $DecimalLongitude = &strip($DecimalLongitude);
+        $DecimalLatitude2 = &strip($DecimalLatitude2);
+        $DecimalLongitude2 = &strip($DecimalLongitude2);
+
+        if($DecimalLatitude || $DecimalLongitude) {
+           $err_msg_geography = &check_decimal_lat_lon_values($DecimalLatitude,$DecimalLongitude);
+           if($err_msg_geography) { 
+               $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: $err_msg_geography<br>";
+           } 
+        } 
+        if($DecimalLatitude2 || $DecimalLongitude2) {
+           $err_msg_geography = &check_decimal_lat_lon_values($DecimalLatitude2,$DecimalLongitude2);
+           if($err_msg_geography) { 
+               $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: $err_msg_geography<br>";
+           } 
+        } 
+    }
+
+
+
+    $line_count = 1;
+
+    foreach my $HorizontalDatum ($s->getColumn("$worksheet","HorizontalDatum")) {
+
+        $HorizontalDatum = &strip($HorizontalDatum);
+        $line_count++;
+
+        if ($HorizontalDatum) {
+            my $ck = &is_a_valid_HorizontalDatum($HorizontalDatum);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: Horizontal Datum \"$HorizontalDatum\" not recognized.";
+            }
+        }
+    }
+
+
+    $line_count = 1;
+
+    foreach my $MaxErrorInMeters ($s->getColumn("$worksheet","MaxErrorInMeters")) {
+
+        $MaxErrorInMeters = &strip($MaxErrorInMeters);
+        $line_count++;
+
+        if ($MaxErrorInMeters) {
+            my $ck = &is_a_decimalnumber($MaxErrorInMeters);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: MaxErrorInMeters \"$MaxErrorInMeters\" is not a decimal number.";
+            }
+        }
+    }
+
+
+    $line_count = 1;
+
+    foreach my $MinElevationMeters ($s->getColumn("$worksheet","MinElevationMeters")) {
+
+        $MinElevationMeters = &strip($MinElevationMeters);
+        $line_count++;
+
+        if ($MinElevationMeters) {
+            my $ck = &is_a_decimalnumber($MinElevationMeters);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: MinElevationMeters \"$MinElevationMeters\" is not a decimal number.";
+            }
+        }
+    }
+
+
+    $line_count = 1;
+
+    foreach my $MaxElevationMeters ($s->getColumn("$worksheet","MaxElevationMeters")) {
+
+        $MaxElevationMeters = &strip($MaxElevationMeters);
+        $line_count++;
+
+        if ($MaxElevationMeters) {
+            my $ck = &is_a_decimalnumber($MaxElevationMeters);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: MaxElevationMeters \"$MaxElevationMeters\" is not a decimal number.";
+            }
+        }
+    }
+
+
+    $line_count = 1;
+
+    foreach my $MinDepthMeters ($s->getColumn("$worksheet","MinDepthMeters")) {
+
+        $MinDepthMeters = &strip($MinDepthMeters);
+        $line_count++;
+
+        if ($MinDepthMeters) {
+            my $ck = &is_a_decimalnumber($MinDepthMeters);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: MinDepthMeters \"$MinDepthMeters\" is not a decimal number.";
+            }
+        }
+    }
+
+
+    $line_count = 1;
+
+    foreach my $MaxDepthMeters ($s->getColumn("$worksheet","MaxDepthMeters")) {
+
+        $MaxDepthMeters = &strip($MaxDepthMeters);
+        $line_count++;
+
+        if ($MaxDepthMeters) {
+            my $ck = &is_a_decimalnumber($MaxDepthMeters);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: MaxDepthMeters \"$MaxDepthMeters\" is not a decimal number.";
+            }
+        }
+    }
+
+
+    $line_count = 1;
+
+    foreach my $DepthOfBottomMeters ($s->getColumn("$worksheet","DepthOfBottomMeters")) {
+
+        $DepthOfBottomMeters = &strip($DepthOfBottomMeters);
+        $line_count++;
+
+        if ($DepthOfBottomMeters) {
+            my $ck = &is_a_decimalnumber($DepthOfBottomMeters);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: DepthOfBottomMeters \"$DepthOfBottomMeters\" is not a decimal number.";
+            }
+        }
+    }
+
+
+    $line_count = 1;
+
+    foreach my $DepthErrorMeters ($s->getColumn("$worksheet","DepthErrorMeters")) {
+
+        $DepthErrorMeters = &strip($DepthErrorMeters);
+        $line_count++;
+
+        if ($DepthErrorMeters) {
+            my $ck = &is_a_decimalnumber($DepthErrorMeters);
+            if (!$ck) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: DepthErrorMeters \"$DepthErrorMeters\" is not a decimal number.";
+            }
+        }
+    }
+
+
+
+    return $err_msg;
+
+}
+
+
+sub check_holdinginstitution_columns {
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+
+    my $line_count = 1;
+
+    foreach my $HoldingInstitution ($s->getColumn("$worksheet","HoldingInstitution")) {
+
+        $HoldingInstitution = &strip($HoldingInstitution);
+        $line_count++;
+
+        if ($HoldingInstitution) {
+            if(!&is_a_valid_HoldingInstitution($HoldingInstitution)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: Unrecognized HoldingInstitution \"$HoldingInstitution\". ";
+                $err_msg .= "<small>[Look <a href=/advanced.html>here</a> for the current list. If you need another HoldingInstitution added, please email Joyce or John.]</small>";
+            }
+        }
+    }
+
+    return $err_msg;
+}
+
+
+sub check_taxteam_columns {
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+
+    my $line_count = 1;
+
+    foreach my $TaxTeam ($s->getColumn("$worksheet","TaxTeam")) {
+
+        $TaxTeam = &strip($TaxTeam);
+        $line_count++;
+
+        if ($TaxTeam) {
+            if(!&is_a_valid_TaxTeam($TaxTeam)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: Unrecognized TaxTeam \"$TaxTeam\". ";
+                $err_msg .= "<small>[Look <a href=/advanced.html>here</a> for the current list. If you need another TaxTeam added, please email Joyce or John.]</small>";
+            }
+        }
+    }
+
+    return $err_msg;
+}
+
+
+
+sub check_phyla {
+    my ($s) = @_;
+    my $err_msg = "";
+
+    my $line_count = 1;
+
+    foreach my $Phylum ($s->getColumn("Specimens","Phylum")) {
+
+        $Phylum = &strip($Phylum);
+        $line_count++;
+
+        if ($Phylum) {
+            if(!&is_a_valid_Phylum($Phylum)) {
+                $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count: Unrecognized Phylum \"$Phylum\".";
+            }
+        }
+    }
+
+    return $err_msg;
+}
+
+
+
+
+
+
+
+sub check_date_identified {
+    my ($s) = @_;
+    my $err_msg = "";
+    my $err_msg_year = "";
+    my $err_msg_month_day = "";
+
+
+    my $line_count = 1;
+    my $line_count_msg = 2;
+
+    foreach my $YearIdentified ($s->getColumn("Specimens","YearIdentified")) {
+        $YearIdentified = &strip($YearIdentified);
+        $line_count++;
+        if ($YearIdentified) {
+            $err_msg_year = &check_year_value($YearIdentified);
+            if ($err_msg_year) {
+                $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count: YearIdentified: $err_msg_year ";
+            }
+        }
+    }
+
+
+    my $line_count = 0;
+
+    foreach my $MonthIdentified ($s->getColumn("Specimens","MonthIdentified")) {
+        $line_count++;
+        $line_count_msg++;
+        my $MonthIdentified = $s->{spreadsheet}->{'Specimens'}->{'MonthIdentified'}->{$line_count};
+        my $DayIdentified = $s->{spreadsheet}->{'Specimens'}->{'DayIdentified'}->{$line_count};
+        $MonthIdentified = &strip($MonthIdentified);
+        $DayIdentified = &strip($DayIdentified);
+        if($MonthIdentified) {
+            $err_msg_month_day = &check_month_day_values($MonthIdentified,$DayIdentified);
+            if($err_msg_month_day) {
+                $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count_msg: $err_msg_month_day<br>";
+            }
+        } elsif($DayIdentified) {
+            $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count_msg: Day Identified entered with no Month Identified.<br>";
+        }
+    }
+
+    return $err_msg;
+}
+
+
+sub check_other_specimen_columns {
+    my ($s, $worksheet) = @_;
+    my $err_msg = "";
+
+	@archivaltissuefields=("tissue_type_preserved","tissue_preservative","tissue_container");
+	foreach my $archivaltissuefield (@archivaltissuefields) {
+	$line_count =  1;
+    	foreach my $tissue_barcode ($s->getColumn("Specimens","Specimen_Num_Collector")) {
+
+        	my $thistissue_barcode= strip($s->{spreadsheet}->{'Specimens'}->{'tissue_barcode'}->{$line_count});
+        	my $thistissue_otherfield= strip($s->{spreadsheet}->{'Specimens'}->{$archivaltissuefield}->{$line_count});
+
+        	$line_count++;
+        	if (!$thistissue_barcode && $thistissue_otherfield) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] $archivaltissuefield entered without a tissue_barcode.";
+        	}
+		}
+    }
+
+
+    my $line_count = 1;
+
+    foreach my $SexCaste ($s->getColumn("Specimens","SexCaste")) {
+
+        $SexCaste = &strip($SexCaste);
+        $line_count++;
+
+        if ($SexCaste) {
+            if (!&is_a_valid_Sex($SexCaste)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] SexCaste \"$SexCaste\" was not found on the list.";
+
+            }
+        }
+    }
+
+
+    my $line_count = 1;
+
+    foreach my $LifeStage ($s->getColumn("Specimens","LifeStage")) {
+
+        $LifeStage = &strip($LifeStage);
+        $line_count++;
+
+        if ($LifeStage) {
+            if (!&is_a_valid_Stage($LifeStage)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] LifeStage \"$LifeStage\" was not found on the list.";
+            }
+        }
+    }
+
+
+    my $line_count = 1;
+
+    foreach my $PreparationType ($s->getColumn("Specimens","PreparationType")) {
+
+        $PreparationType = &strip($PreparationType);
+        $line_count++;
+
+        if ($PreparationType) {
+            if (!&is_a_valid_PreparationType($PreparationType)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] PreparationType \"$PreparationType\" was not found on the list.";
+            }
+        }
+    }
+
+
+    my $line_count = 1;
+
+    foreach my $preservative ($s->getColumn("Specimens","preservative")) {
+
+        $preservative = &strip($preservative);
+        $line_count++;
+
+        if ($preservative) {
+            if (!&is_a_valid_preservative($preservative)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] preservative \"$preservative\" was not found on the list.";
+            }
+        }
+    }
+
+
+    my $line_count = 1;
+
+    foreach my $relaxant ($s->getColumn("Specimens","relaxant")) {
+
+        $relaxant = &strip($relaxant);
+        $line_count++;
+
+        if ($relaxant) {
+            if (!&is_a_valid_relaxant($relaxant)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] relaxant \"$relaxant\" was not found on the list.";
+            }
+        }
+    }
+
+
+    my $line_count = 1;
+
+    foreach my $fixative ($s->getColumn("Specimens","fixative")) {
+
+        $fixative = &strip($fixative);
+        $line_count++;
+
+        if ($fixative) {
+            if (!&is_a_valid_preservative($fixative)) {
+                $err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] fixative \"$fixative\" was not found on the list.";
+                # add link to "add fixative" form? http://biocode.berkeley.edu/cgi/biocode_preservative_add_update?special=pop&action=new&step=form
+            }
+        }
+    }
+
+
+	@arrtissue_preservatives = ("tissue_preservative","tissue2_preservative","tissue3_preservative","tissue4_preservative","tissue5_preservative");
+	foreach $thistissue (@arrtissue_preservatives) {
+    	my $line_count = 1;
+    	foreach my $tissue_preservative ($s->getColumn("Specimens",$thistissue)) {
+
+        	$tissue_preservative = &strip($tissue_preservative);
+        	$line_count++;
+
+        	if ($tissue_preservative) {
+            	if (!&is_a_valid_preservative($tissue_preservative)) {
+                	$err_msg .= "<li>Error .... $worksheet Worksheet, Row $line_count: [$s->{spreadsheet}->{'Specimens'}->{'Specimen_Num_Collector'}->{$line_count - 1}] tissue_preservative \"$tissue_preservative\" was not found on the list.";
+            	}
+        	}
+    	}
+	}
+
+    return $err_msg;
+}
+
+sub check_collecting_event_exists {
+    my ($s, $collevent_sheet_exists) = @_;
+    my $err_msg = "";
+
+    my @collevents = ();
+    my %collevents_in_spreadsheet = ();
+
+    my $line_count = 1;
+
+    foreach my $Coll_EventID_collector ($s->getColumn("Collecting_Events","Coll_EventID_collector")) {
+        $Coll_EventID_collector = &strip($Coll_EventID_collector);
+        push(@collevents, $Coll_EventID_collector);
+    }
+
+    if($collevent_sheet_exists eq "true") {   # if a collecting event sheet is being loaded at the same time...
+        for (@collevents) { $collevents_in_spreadsheet{$_} = 1 }
+    }
+
+    foreach my $Coll_EventID_collector ($s->getColumn("Specimens","Coll_EventID_collector")) {
+
+        $Coll_EventID_collector= &strip($Coll_EventID_collector);
+        $line_count++;
+
+        if (!$collevents_in_spreadsheet{$Coll_EventID_collector}) {
+            # the Coll_EventID_collector is not in the spreadsheet that's going to be loaded, so look in the database.
+            my $query = "select count(*) from biocode_collecting_event where Coll_EventID_collector = '$Coll_EventID_collector'";
+            my ($count) = &get_one_record("$query","biocode");
+            if(!$count) {
+                $err_msg .= "<li>Error .... Specimens Worksheet, Row $line_count: Coll_EventID_collector <b>$Coll_EventID_collector</b> doesn't exist<br>";
+            }
+        }
+
+    }
+
+    return $err_msg;
+}
+
+
+
+sub check_taxonomy {
+    my ($s) = @_;
+    my $err_msg = "";
+
+    my $Phylum = "";
+
+    my $Subphylum = "";
+    my $Superclass = "";
+    my $Class = "";
+    my $Subclass = "";
+    my $Infraclass = "";
+    my $Superorder = "";
+    my $Ordr = "";
+    my $Infraorder = "";
+    my $Superfamily = "";
+    my $Family = "";
+    my $Subfamily = "";
+    my $Tribe = "";
+    my $Subtribe = "";
+
+    my $Genus = "";
+    my $Species = "";  # ??
+    my $SpecificEpithet = "";
+    my $SubSpecificEpithet = "";
+
+    my $LowestTaxon = "";
+    my $LowestTaxonLevel = "";
+
+    my $ScientificName = "";
+
+
+    my %allowable_taxon_levels = ();
+
+    # These are fields that potentially could be filled out on the Excel file but most likely won't be except in LowestTaxon & LowesTaxonLevel fields:
+
+    my @taxonlevellist = qw(Kingdom Subphylum Superclass Class Subclass Infraclass Superorder Infraorder Superfamily Family Subfamily Tribe Subtribe);
+
+
+    my $line_count = 0;
+    # for my $cell ( sort keys %{$s->{spreadsheet}->{'Specimens'}->{'Phylum'}} ) {
+    for my $rowcount (  $s->getColumn("Specimens","rowcount")) {
+    
+        $line_count++;
+        foreach my $taxonlevel (@taxonlevellist) {
+            # first clear out existing taxonomy values from db if they aren't in Excel file
+            if(!$s->{spreadsheet}->{'Specimens'}->{'$taxonlevel'}->{$line_count}) {
+                $s->{spreadsheet}->{'Specimens'}->{'$taxonlevel'}->{$line_count} = "NULL";
+            }
+        }
+    }
+
+    my $line_count = 0;
+    # for my $cell ( sort keys %{$s->{spreadsheet}->{'Specimens'}->{'Phylum'}} ) {
+    for my $rowcount (  $s->getColumn("Specimens","rowcount")) {
+
+        $line_count++;
+        $rowcount++; # this is just for printing the error messages (nice line/row count info corresponding exactly with that on Excel sheet)
+
+        my $Phylum = &strip($s->{spreadsheet}->{'Specimens'}->{'Phylum'}->{ $line_count });
+
+        my $LowestTaxonLevel = &strip($s->{spreadsheet}->{'Specimens'}->{'LowestTaxonLevel'}->{ $line_count });
+        my $LowestTaxon = &strip($s->{spreadsheet}->{'Specimens'}->{'LowestTaxon'}->{ $line_count });
+
+        my $Genus = &strip($s->{spreadsheet}->{'Specimens'}->{'Genus'}->{ $line_count });
+        my $SpecificEpithet = &strip($s->{spreadsheet}->{'Specimens'}->{'SpecificEpithet'}->{ $line_count });
+        my $SubSpecificEpithet = &strip($s->{spreadsheet}->{'Specimens'}->{'SubSpecificEpithet'}->{ $line_count });
+
+
+
+        if(!$LowestTaxonLevel && $LowestTaxon) {
+            $err_msg .= "<li>Error .... Specimens Worksheet, Row $rowcount: LowestTaxon entered without LowestTaxonLevel<br>";
+        } elsif ($LowestTaxonLevel && !$LowestTaxon) {
+            $err_msg .= "<li>Error .... Specimens Worksheet, Row $rowcount: LowestTaxonLevel entered without LowestTaxon<br>";
+        }
+
+        if($SpecificEpithet && !$Genus) {
+            $err_msg .= "<li>Error .... Specimens Worksheet, Row $rowcount: SpecificEpithet entered without Genus<br>";
+        }
+
+        for (@taxon_levels) { $allowable_taxon_levels{$_} = 1 }
+
+        if ($LowestTaxonLevel && $LowestTaxon && !$allowable_taxon_levels{$LowestTaxonLevel}) {
+            $err_msg .= "<li>Error .... Specimens Worksheet, Row $rowcount: <b>$LowestTaxonLevel</b> is not an allowed LowestTaxonLevel value.<br>";
+
+        } elsif($LowestTaxonLevel eq "Genus_and_Species") {
+            $s->{spreadsheet}->{'Specimens'}->{'ScientificName'}->{$line_count} = $LowestTaxon;
+
+            ($Genus,$SpecificEpithet,$SubspecificEpithet) = split(/\s/,$LowestTaxon);
+            $s->{spreadsheet}->{'Specimens'}->{'Genus'}->{$line_count} = "$Genus";
+            $s->{spreadsheet}->{'Specimens'}->{'SpecificEpithet'}->{$line_count} = "$SpecificEpithet";
+            $s->{spreadsheet}->{'Specimens'}->{'SubSpecificEpithet'}->{$line_count} = "$SubSpecificEpithet";
+
+        } elsif($LowestTaxonLevel eq "Genus") {
+            $s->{spreadsheet}->{'Specimens'}->{'ScientificName'}->{$line_count} = $LowestTaxon;
+            $s->{spreadsheet}->{'Specimens'}->{'Genus'}->{$line_count} = "$LowestTaxon";
+
+        } elsif($Genus) {
+
+            $s->{spreadsheet}->{'Specimens'}->{'Genus'}->{$line_count} = "$Genus";
+            $s->{spreadsheet}->{'Specimens'}->{'SpecificEpithet'}->{$line_count} = "$SpecificEpithet";
+            $s->{spreadsheet}->{'Specimens'}->{'SubSpecificEpithet'}->{$line_count} = "$SubSpecificEpithet";
+            $s->{spreadsheet}->{'Specimens'}->{'ScientificName'}->{$line_count} = "$Genus $SpecificEpithet $SubSpecificEpithet"; 
+            $s->{spreadsheet}->{'Specimens'}->{'ScientificName'}->{$line_count} = &strip($s->{spreadsheet}->{'Specimens'}->{'ScientificName'}->{$line_count});
+
+#print "genus: $Genus<br>";
+#print "specificepithet: $SpecificEpithet<br>";
+#print "scientificname: $s->{spreadsheet}->{'Specimens'}->{'ScientificName'}->{$line_count}<p>";
+
+        }
+
+
+        if($LowestTaxonLevel eq "Kingdom") {
+            $s->{spreadsheet}->{'Specimens'}->{'Kingdom'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Subphylum") {
+            $s->{spreadsheet}->{'Specimens'}->{'Subphylum'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Superclass") {
+            $s->{spreadsheet}->{'Specimens'}->{'Superclass'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Class") {
+            $s->{spreadsheet}->{'Specimens'}->{'Class'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Subclass") {
+            $s->{spreadsheet}->{'Specimens'}->{'Subclass'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Infraclass") {
+            $s->{spreadsheet}->{'Specimens'}->{'Infraclass'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Superorder") {
+            $s->{spreadsheet}->{'Specimens'}->{'Superorder'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Ordr") {
+            $s->{spreadsheet}->{'Specimens'}->{'Ordr'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Infraorder") {
+            $s->{spreadsheet}->{'Specimens'}->{'Infraorder'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Superfamily") {
+            $s->{spreadsheet}->{'Specimens'}->{'Superfamily'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Family") {
+            $s->{spreadsheet}->{'Specimens'}->{'Family'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Subfamily") {
+            $s->{spreadsheet}->{'Specimens'}->{'Subfamily'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Tribe") {
+            $s->{spreadsheet}->{'Specimens'}->{'Tribe'}->{$line_count} = $LowestTaxon;
+
+        } elsif($LowestTaxonLevel eq "Subtribe") {
+            $s->{spreadsheet}->{'Specimens'}->{'Subtribe'}->{$line_count} = $LowestTaxon;
+
+        }
+
+         # print "phylum: $Phylum<br>";
+         # print "species: $SpecificEpithet<br>";
+         # print "<font color=green>genus: $Genus</font><br>";
+         # print "lowesttaxon: $LowestTaxon<br>";
+         # print "lowesttaxonlevel: $LowestTaxonLevel<p>";
+
+    }
+
+
+# from Ginger's code
+# this doesn't work so well with Gustav's new columns
+#
+#                        # put it in the proper level
+#                        foreach $t (@taxon_levels) {
+#                            if ($t eq $LowestTaxonLevel) {
+#                                if ($t eq "SpecificEpithet") {
+#                                    $ScientificName = $LowestTaxon;
+#                                    ($Genus,$SpecificEpithet) = split(/\s/,$LowestTaxon);
+#                                } elsif ($t eq "SubspecificEpithet") {
+#                                    $ScientificName = $LowestTaxon;
+#                                    ($Genus,$SpecificEpithet,$SubspecificEpithet) = split(/\s/,$LowestTaxon);
+#                                } else {
+#                                    ${$t} = $LowestTaxon;
+#                                }
+#                            }
+#                        }
+
+    return ($s, $err_msg);
+}
+
+
+
+sub get_current_dates {
+    # $todays_date="Feb 05 1999"
+    #
+    # month:
+    #   $this_mon="Feb"
+    # day :
+    #   $this_day="05"
+    # year:
+    #   $this_yr="1999"
+
+    my $todays_date = "";
+    my $mysql_datetime = "";
+    my $this_mon = "";
+    my $this_day = "";
+    my $this_yr = "";
+
+    $todays_date = &strip(`date '+%h %d %Y'`);            ## Feb 05 2007
+    $mysql_datetime = &strip(`date '+%Y-%m-%d %T'`);      ## 2005-10-26 09:47:12
+    ($this_mon,
+     $this_day,
+     $this_yr) =
+         split(/ /,$todays_date); # (Feb,5,1999)
+
+    return($todays_date, $mysql_datetime, $this_yr, $this_mon, $this_day);
+
+}
+
+
+
+sub check_year_value {
+    # if error with year, return error message
+    my ($year) = @_;
+    my $bad_date_msg = "";
+
+    my $todays_date = "";
+    my $mysql_datetime = "";
+    my $this_yr = "";
+    my $this_mon = "";
+    my $this_day = "";
+
+    ($todays_date, $mysql_datetime, $this_yr, $this_mon, $this_day) = &get_current_dates;
+
+    if ($year !~ /^\d\d\d\d$/) {
+        $bad_date_msg .= "Year \"$year\" is not 4 digits ...";
+    } elsif ($year < 1700 || $year > $this_yr) {
+        $bad_date_msg .= "Year \"$year\" is outside allowable range ...";
+    }
+
+    return "$bad_date_msg";
+}
+
+
+
+sub check_month_day_values {
+    my ($mo,$da) = @_;
+    my $bad_date_msg = "";
+
+    if ($mo) {
+        if ($mo !~ /^\d{1,2}$/) {
+            $bad_date_msg .= "Month \"$mo\" is not one or two digits ...";
+            $mo = "";
+        }
+        if ($mo > 12 || $mo < 0) {
+            $bad_date_msg .=  "Month \"$mo\" is outside range ...";
+            $mo = "";
+        }
+    } else {
+        $mo = 0;
+    }
+    if ($da) {
+        if ($da !~ /^\d{1,2}$/) {
+            $bad_date_msg .= "Day \"$da\" is not one or two digits ...";
+            $da = "";
+        }
+        if ($da > 31 || $da < 0) {
+            $bad_date_msg .=  "Day \"$da\" is outside range ...";
+            $da = "";
+        }
+        # check for right number of days
+        if ($mo == 2 && $da > 29) {
+            $bad_date_msg .=  " Day \"$da\": wrong for February ...\n";
+            $da = "";
+        }
+        if (($mo == 4 || $mo == 6 || $mo == 9 || $mo == 11) && $da > 30) {
+            $bad_date_msg .=  " Day \"$da\": too many days for month $mo\n";
+            $da = "";
+        }
+    } else {
+        $da = 0;
+    }
+    # $mo = sprintf("%02d",$mo);
+    # $da = sprintf("%02d",$da);
+    # return ($mo,$da);   # from utils.p -- i don't think we need this? 04/06/2009 .. jg
+
+    return "$bad_date_msg";
+
+}
+
+
+
+
+sub check_decimal_lat_lon_values {
+    my ($lat,$long) = @_;
+    my $lat_long_err_msg = "";
+
+    if ($lat eq "" && $long eq "") {
+        $lat_long_err_msg .= "No Decimal Latitude or Decimal Longitude entered.\n";
+    } elsif ($long eq "") {
+        $lat_long_err_msg .= "Got a decimal latitude without a longitude\n";
+    } elsif ($lat eq "") {
+        $lat_long_err_msg .= "Got a decimal longitude without a latitude\n";
+
+    } elsif ($lat !~ /^\-?\d{1,2}\.?\d{0,8}$/) {
+        $lat_long_err_msg .= "Decimal latitude \"$lat\" is not a valid format (possibly latitude and longitude values are switched)\n";
+    } elsif ($long !~ /^\-?\d{1,3}\.?\d{0,8}$/) {
+        $lat_long_err_msg .= "Decimal longitude \"$long\" is not a valid format (possibly latitude and longitude values are switched)\n";
+    }
+
+    return "$lat_long_err_msg";
+
+}
+
+
+sub convert_verbatim_lat_long_values {
+
+    my($VerbatimLatitude, $VerbatimLongitude) = @_;
+    my $DecimalLongitude = "";
+    my $DecimalLatitude = "";
+    my $err_msg = "";
+
+    my $lat_deg = "";
+    my $lat_min = "";
+    my $lat_sec = "";
+    my $lat_dir = "";
+
+
+    ## Examples
+    ##
+    ## VerbatimLatitude VerbatimLongitude DecimalLatitude DecimalLongitude
+    ##    37 48 12 S       73 01 29 W         -37.8033       -73.0247
+    ##  30o 44' 00 N      115o 57' 00 W        30.7333      -115.9500
+
+    $VerbatimLatitude = &strip($VerbatimLatitude);
+    $VerbatimLongitude = &strip($VerbatimLongitude);
+
+    if ($VerbatimLongitude || $VerbatimLatitude) {
+        if (!$VerbatimLatitude) {
+            $err_msg .= "VerbatimLongitude entered but not VerbatimLatitude";
+        } elsif (!$VerbatimLongitude) {
+            $err_msg .= "VerbatimLatitude entered but not VerbatimLongitude";
+
+        ## match "16o 27' 00 S" or "04 43 00 N" or "116 44 13.4 W"
+        } elsif ( ($VerbatimLatitude =~ /^\d{1,3}\W* \d{1,2}\W* \d{1,2}(\.\d+)*\W* [EWNS]$/i) &&
+                  ($VerbatimLongitude =~ /^\d{1,3}\W* \d{1,2}\W* \d{1,2}(\.\d+)*\W* [EWNS]$/i) ) {
+            ($long_deg,$long_min,$long_sec,$long_dir) = split(/ /,$VerbatimLongitude);
+            ($lat_deg,$lat_min,$lat_sec,$lat_dir) = split(/ /,$VerbatimLatitude);
+            $DecimalLongitude = &convert_degrees2decimal($long_deg,$long_min,$long_sec,$long_dir);
+            $DecimalLatitude = &convert_degrees2decimal($lat_deg,$lat_min,$lat_sec,$lat_dir);
+
+        ## match degrees decimal minutes: "36° 54.947' S" or "071° 27.417' W"
+        ##                             or "36 54.947 S" or "071 27.417 W"
+        } elsif ($VerbatimLatitude =~ /^(\d{1,3})\W* (\d{1,2})(\.\d{1,5})\W* ([EWNS])$/i) {
+            $lat_deg = $1;
+            $lat_min = $2;
+            $lat_sec = $3;
+            $lat_sec = $lat_sec * 60;
+            $lat_dir = $4;
+            if($VerbatimLongitude =~ /^(\d{1,3})\W* (\d{1,2})(\.\d{1,5})\W* ([EWNS])$/i) {
+                $long_deg = $1;
+                $long_min = $2;
+                $long_sec = $3;
+                $long_sec = $long_sec * 60;
+                $long_dir = $4;
+                $DecimalLongitude = &convert_degrees2decimal($long_deg,$long_min,$long_sec,$long_dir);
+                $DecimalLatitude = &convert_degrees2decimal($lat_deg,$lat_min,$lat_sec,$lat_dir);
+            }
+
+        # match this format: S17.54990 W149.79460 (S = -; W = -; N = nothing; E = nothing)
+        } elsif ($VerbatimLatitude =~ /^[SWNE]\s*(\d+\.\d+)$/i && $VerbatimLongitude =~ /^[SWNE]\s*(\d+\.\d+)$/i) {
+            if ($VerbatimLatitude =~ /^S\s*(\d+\.\d+)$/i) {
+                $DecimalLatitude = "-$1";
+            } elsif ($VerbatimLatitude =~ /^N\s*(\d+\.\d+)$/i) {
+                $DecimalLatitude = "$1";
+            }
+
+            if ($VerbatimLongitude =~ /^W\s*(\d+\.\d+)$/i) {
+                $DecimalLongitude = "-$1";
+            } elsif ($VerbatimLongitude =~ /^E\s*(\d+\.\d+)$/i) {
+                $DecimalLongitude = "$1";
+            }
+
+
+        } else {
+
+            $err_msg .= "<b>Verbatim Lat/Long:</b> unrecognized format; no Decimal Lat/Long entered ";
+            # $err_msg .= " <small>($help_win_link=VerbatimLatLon')\">click here for help</a>)</small>";
+        }
+    }
+
+#print "lat: $DecimalLatitude<br>";
+#print "long: $DecimalLongitude<br>";
+
+    return($DecimalLatitude,$DecimalLongitude,$err_msg);
+
+}
+
+
+sub convert_degrees2decimal {  # convert lat/long degrees, minutes, seconds to decimal
+    my ($degrees, $minutes, $seconds, $direction) = @_;
+
+    # http://www.fcc.gov/mb/audio/bickel/DDDMMSS-decimal.html
+    # test      dd mm ss
+    # test: lat 42 30 0  N  -> 42.5
+    # test: lon 124 0 0  W  -> -124.0
+    ## updated 1/11/2006 to allow zero values in lat_deg or long_deg
+
+
+    if ($degrees eq "" && $minutes eq "" && $seconds eq "") {
+        return "";
+    }
+
+    my ($decimal) = $degrees + ($minutes/60) + ($seconds/3600);
+    if (uc($direction) eq "S" || uc($direction) eq "W") {
+        $decimal = -1 * $decimal;
+    }
+
+    $decimal = sprintf("%.6f",$decimal);   # 6 decimal places
+    return $decimal;
+}
+
+
+
+
+

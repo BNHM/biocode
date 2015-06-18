@@ -1,0 +1,925 @@
+#!/usr/bin/perl
+
+# biocode_collect_event_query  G.Ogle 10/10/2005
+
+# $DEBUG = 1;
+
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p";
+require "mybiocode_utils.p";
+require "myimg_utils.p";
+require "biocode_settings";
+
+## uncomment for system crashes
+# $CRASH = 1;  ## queries will just exit out of readParse
+$crash_date = "Fri Oct  8 10:15:08 PDT 2004";
+
+$max_rows = 100;
+$latlong = 0;
+$orig_in = $ENV{'QUERY_STRING'};
+
+$table = "biocode_collecting_event";
+$script_name = "biocode_collect_event_query";
+$heading = "Biocode Collecting Events";
+$tmp_dir =  "$tmp_file_location/biocode_collect_event_query";
+$download_on = 1;
+
+### begin
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+$query_src = $input{query_src};
+if (!$max) {
+    $max = 100;
+}
+if ($input{"download"}) {   
+    $displaylist = $input{'displaylist'};
+    &download_biocode_collecting_event($input{"download"});
+					   
+} elsif ($input{"one"} eq "T") {
+    &one_record_query;
+    if ($bad_args_for_one_record_query) {
+	&print_biocode_header_css($heading);
+	print "<p><h3>Sorry, I don't understand that query.  Please try again</h3>";
+	&print_biocode_footer;
+	return;
+    } else {
+	$stat = "DETAIL";
+	&print_detail;
+    }
+
+
+} elsif ($input{"tmpfile"} eq "") {   # this is not a next or prev page
+    
+    ## make sure we have a selectlist
+    if (!$selectlist) {
+	# $selectlist = &get_simple_ce_selectlist;
+	$selectlist = "*";
+    }
+    if ($DEBUG) {
+	$debug_msg .= "<h4>biocode_query_accessions</h4> calling build_query.";
+	$debug_msg .= "  selectlist: $selectlist<p>";
+    }
+    &build_query;  # query_utils.p
+    &do_regular_query;
+    
+
+} elsif ($input{"tmpfile"} ne "") {  # next or prev page
+    &use_tmp_file;
+}
+
+&make_log_entry("biocode_collecting_event",$whereclause,$stat,$query_src);
+
+### end
+
+sub do_regular_query {
+    if ($DEBUG) {$debug_msg .= "<h4>In do_regular_query</h4>";}    
+
+    &print_biocode_header_css($heading);
+
+    if (!$whereclause || $whereclause !~ /^WHERE/) {
+	$whereclause = "nothing selected";
+	$num_matches = 0;
+	print "<p><h3>Error: Please go back and select at least one field to query on.</h3>"; 
+	if ($DEBUG) {
+	    print "<p>DEBUG_MSG<p>$debug_msg;";
+	}
+	&print_biocode_footer;
+	return;
+ 
+    }
+
+    $tmp = &get_multiple_records($query,"biocode");  # query_utils.p
+
+
+    ### write some fields to a file for BerkeleyMapper (we'll be opening the file twice)
+
+    $bm = 0;  # keep track of whether or not there are any georeferenced records
+
+    open(FH,"$tmp") || die "Can't open $tmp file ";
+
+    $bmtmpfile = rand(1000000);
+    $bmtmpfile = sprintf("%d",$bmtmpfile);
+
+    while(-e $bmtmpfile) {
+        $bmtmpfile = rand(1000000);
+        $bmtmpfile = sprintf("%d",$bmtmpfile);
+    }
+    open(OH, ">$bmtmpfile")
+        || die "Can't open bmtmpfile file in $tmpdir/$script_name";
+
+    while(<FH>) {
+        @row = split(/\t/,$_);
+
+        ### make BerkeleyMapper file
+        foreach $s (@biocode_collecting_event_bm_schema) {
+            ${$s} = "";
+        }
+        $bm_record = "";
+
+        &fill_fields_with_values("biocode_collecting_event");
+
+        foreach $s (@biocode_collecting_event_bm_schema) {
+
+            $val = &strip(${$s});
+            #print "$s; ${$s}<br>";
+            $bm_record .= "$val\t";
+
+            if($DecimalLongitude) {
+                $bm = 1;
+            }
+        }
+        print OH "$bm_record\n";
+
+    }
+    close(FH);
+    close(OH);
+    ### end make BerkeleyMapper file
+
+
+    if ($DEBUG) {$debug_msg .= "made tmp file tmp=$tmp ...\n";}
+
+    if ($DEBUG) {$debug_msg .=  "calling check_max ...\n";}
+    &check_max;  # query_utils.p
+    if ($default_max) {
+	$max_rows = 59;
+    }    
+    if ($num_matches eq 0) {
+	print "<h4>Sorry - no matches. Please try again.</h4>";
+        print "<small><b>Query:</b> $query</small><br>\n";
+	if ($DEBUG) {
+            print "<p>DEBUG_MSG<p>$debug_msg;";
+        }
+	&print_biocode_footer;
+	return;    
+    }
+    $query_results = $tmp;
+
+    if ($DEBUG) {$debug_msg .=  "calling print_multiple_records ...\n";}
+    if ($DEBUG) {$debug_msg .=  "<br>query_results: $query_results";}
+    if ($input{'advanced'} eq "T") {
+	&print_advanced_records;
+    } else {
+	&print_multiple_records;
+    }
+}
+
+
+
+sub use_tmp_file {
+
+    if ($DEBUG) {$debug_msg .= "<p>In use_tmp_file<p>\n";}
+
+    $whereclause = $input{'prevwhere'};
+    &print_biocode_header_css($heading);
+
+    &check_max; # query_utils.p
+    $query_results = "$tmp_file_location/$script_name/$input{'tmpfile'}";
+
+    if ($DEBUG) {$debug_msg .=  "<h4>query_results: $query_results</h4>>\n";}
+    if ($input{'button_flag'} eq "ADVANCED") {
+	&print_advanced_records;
+    } else {
+	&print_multiple_records;
+    }
+}
+
+
+sub print_multiple_records {
+    
+    $some_pics=0;
+    if ($DEBUG) {$debug_msg .= "<h4>In print_multiple_records</h4>";}
+    &print_table_cells;
+
+    print "</table>\n";
+
+    if ($DEBUG) {
+	print "<p>DEBUG_MSG<p>$debug_msg;";
+    }
+    &print_biocode_footer;
+
+}
+    
+
+sub print_table_cells {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In print_table_cells<h4>";}
+
+    $searchstring = $whereclause;
+    #$searchstring =~ s/WHERE//g;
+
+    ## stuff for download button
+    $dwhere = &strip($searchstring);
+    $dwhere =~ s/\"//g;  # county="county=San Diego" ->county=San Diego
+    $dwhere =~ s/ /\+/g;
+
+    if ($download_on) {
+	$filesize = sprintf("%.1f",(-s $query_results) / 1000);
+        print "<li>";
+	print "<a href=\"/cgi/biocode_collect_event_query?stat=DOWNLOAD&query_src=$query_src&download=$query_results";
+	print "&table=biocode_collecting_event&num=$num_matches&whereclause=$dwhere\">Download your results</a> ";
+	print " (tab-delimited text file, $num_matches lines, file size = $filesize K)<p>";
+    }
+
+    $bnhm_mapper_url = &get_bnhm_mapper_url_coll;
+    if($bm){ 
+        print "<li><a href=$bnhm_mapper_url target=viewer_window>View a Map</a> of the georeferenced records below (via <i><a href=http://berkeleymapper.berkeley.edu/>BerkeleyMapper</a></i>)\n";
+    }
+
+    $query_to_display = "SELECT FROM biocode_collecting_event $whereclause $groupclause $orderclause"; 
+    print "<p><small><b>Query:</b> $query_to_display</small><br><p>\n";
+    
+    print "<p><small><i>Click on Biocode EventID to see ";
+    print "the full record<br>\n";
+    print "</i></small>\n";
+
+    print "<table width=100% border>";
+    print "<TR>";
+    print "<th><small>Biocode EventID</th>\n";
+    print "<th><small>Collector's EventID</th>\n";
+    print "<th><small>Collector(s)</th>\n";
+    print "<th><small>Date</th>\n";
+    print "<th><small>Locality</th>\n";
+    print "<th><small>Country</th>\n";
+
+
+    open(FH, "$query_results") || die "Can't open tmp file for reading";
+    local($count) = 0;
+
+    while(<FH>) {
+	
+        if(($count < ($row_to_start + $max_rows)) && ($count >= $row_to_start)) {
+
+            @row = split(/\t/,$_);
+	    #&fill_fields_with_values("biocode_collecting_event_simple_display");
+	    &fill_fields_with_values("biocode_collecting_event");
+
+            print "<tr>";
+
+	    print "<td align=center><a href=/cgi/biocode_collect_event_query?query_src=$query_src&EventID=$EventID&one=T>";
+	    print "$EventID</small></a><br></td>\n";
+	    print "<td>$Coll_EventID_collector</a><br></td>\n";
+	    print "<td align=center>$Collector_List</a><br></td>\n";
+	    $pretty_date = &make_pretty_date3($MonthCollected,$DayCollected,$YearCollected);
+	    print "<td align=center>$pretty_date<br></td>\n";
+
+	    print "<td>$Locality<br></td>\n";
+	    print "<td>$Country<br></td>\n";
+	}
+
+	print "</tr>";
+        $count++;
+    }
+    close(FH);
+}
+
+
+sub one_record_query {
+
+    ## query biocode table
+
+    if ($DEBUG) {$debug_msg .= "<h4>In one_record_query</h4><p>\n";}
+    $debug_msg .= "input: $input<p>\n";
+
+    ## from the prelim results page
+    if ($input{'EventID'}) {
+	$EventID = $input{'EventID'};
+	$whereclause = "WHERE EventID =\"$EventID\"";
+
+    } elsif ($input{'Coll_EventID_collector'}) {
+	    $Coll_EventID_collector = $input{'Coll_EventID_collector'};
+	    $whereclause = "WHERE Coll_EventID_collector =\"$Coll_EventID_collector\"";
+
+    } else {
+	$bad_args_for_one_record_query = 1;
+        return;
+    }
+
+    $query = "select * from biocode_collecting_event $whereclause";
+    if ($DEBUG) {$debug_msg .= "query: $query<p>\n";}
+
+    @row = &get_one_record($query,"biocode");
+
+    local($count) = 0;
+    foreach $attr (@biocode_collecting_event_schema) {
+        $val{$attr} = $row[$count];
+        $count++;
+    }
+
+}
+
+sub print_detail {
+    
+    if ($DEBUG) {$debug_msg .= "<h4>In print_detail<\h4>\n";}
+    &clear_all_fields("biocode_collecting_event");
+    &fill_fields_with_values("biocode_collecting_event");
+    if ($Coll_EventID_collector) {
+	$page_heading = $heading . ": $Coll_EventID_collector";
+    } else {
+	$page_heading = $heading . ": $EventID"; 
+    }
+    &print_biocode_header_css($page_heading);
+
+#    &get_eventID_img_info;
+
+
+    print "<table width=100%>\n";
+
+    print "<tr>\n";
+#    print "<td>\n";
+#    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+#    print "<font size=+1>\n";
+#    print "Detail for Collecting Event $EventID"; 
+#    print "</font>\n";
+#    print "</td>\n";
+#    print "<td>\n";
+#    ## right side of the page
+#    if($piclink) {
+#       print "<table border>";
+#       print "<tr><td><a href=/cgi/biocode_img_query?eventID=$EventID>$piclink</a><br>";
+#       $getcopyright = "select copyright from biocode_people where name_full = '$photographer'";
+#       ($copyright) = &get_one_record("$getcopyright");
+#       if(!$copyright) {
+#           $copyright = $photographer;
+#       }
+#       if($pic_count == 1) {
+#           $copyright =~ s/\s/&nbsp;/g;
+#           print "<small>";
+#           print "&copy;&nbsp;$copyright<br>";
+#           print "<center>(1 of <a href=/cgi/biocode_img_query?eventID=$EventID>$pic_count photo</a>)\n";
+#           print "</small>";
+#       } else {
+#           $copyright =~ s/\s/&nbsp;/g;
+#           print "<small>";
+#           print "&copy;&nbsp;$copyright<br>";
+#           print "<center>(1 of <a href=/cgi/biocode_img_query?eventID=$EventID>$pic_count photos</a>)\n";
+#           print "</small>";
+#       }
+#       print "</td>\n";
+#       print "</tr>\n";
+#       print "</table>";
+#    }
+#
+#    print "</td>\n";
+
+#    print "<tr>\n";
+#    print "<td colspan=2>\n";
+#    print "<hr>\n";
+#    print "</td>\n";
+#    print "</tr>\n";
+
+    print "</tr>\n";
+    
+    print "<tr>";
+
+    print "<td valign=top width=50%>\n";
+    &print_column1;
+    print "</td>\n";
+
+    print "<td valign=top>\n";
+    &print_column2;
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+    print "<table>\n";
+    print "<tr>";
+    print "<td valign=top>\n";
+    &print_last_modified;
+
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+
+    &print_update_link;
+    &print_biocode_footer;
+}
+
+
+sub print_column1 {
+
+    print "<table cellspacing=5 callpadding=5>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Collector's Event ID:</td>";
+    print "<td align=left valign=top><b>";
+    print "$Coll_EventID_collector</b>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Biocode Event ID:</td>";
+    print "<td align=left><b>$EventID</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Project:</td>";
+    print "<td align=left><b>";
+
+    print "$ProjectCode\n";
+
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td valign=top>Institution:</td>";
+    print "<td align=left><b>$HoldingInstitution\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Disposition:</td>";
+    print "<td align=left><b>$Disposition\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr><td valign=top><br></td></tr>\n";
+
+    ## Items & Description
+    print "<tr>\n";
+    print "<td valign=top>\# Items:</td>";
+    print "<td align=left><b>$IndividualCount\n";
+    print "</td>\n";
+    print "</tr>\n";
+    
+    ## Taxon notes
+    print "<tr>\n";
+    print "<td valign=top>Taxon Notes:</td>";
+    print "<td align=left><b>$TaxonNotes\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    ## Collector, etc.
+    print "<tr>\n";
+    print "<td valign=top>Collected by:</td>";
+    $coll_query = "/cgi/biocode_people_query?table=biocode_people&one=T&name_full";
+    @Collecters = split(/\,/,$Collector_List);
+    $coll_list = "";
+
+    foreach $c (@Collecters) {
+	$c_url = &strip($c);
+	$c_url =~ s/ /\+/g;
+	$coll_list .= "<nobr><a href=$coll_query=$c_url>$c</a></nobr> & \n";
+    }
+    $coll_list =~ s/\& $//g;
+    print "<td align=left><b>$coll_list\n";
+
+    print "</td>\n";
+    print "</tr>\n";
+
+    $coll_date =  &make_pretty_date3($MonthCollected,$DayCollected,$YearCollected);
+    $coll_date2 =  &make_pretty_date3($MonthCollected2,$DayCollected2,$YearCollected2);
+
+
+    print "<tr>\n";
+    print "<td valign=top>Date Collected:</td>";
+    print "<td align=left><b>$coll_date\n";
+
+    if ($coll_date2) {
+        print " - $coll_date2\n";
+    }
+    print "</b>";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Time of day:</td>";
+    print "<td align=left><b>$TimeofDay\n";
+    if ($TimeofDay2) {
+        print " - $TimeofDay2\n";
+    }
+    print "</b>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Collection Method:</td>";
+    print "<td align=left><b>$Collection_Method</b>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr><td valign=top><br></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Landowner:</td>";
+    print "<td align=left><b>$Landowner";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Permits:</td>";
+    print "<td align=left><b>$Permit_Info\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr><td valign=top><br></td></tr>\n";
+    print "<tr>\n";
+    print "<td valign=top>Other Event ID 1:</td>";
+    print "<td align=left><b>$OtherEventID</td>\n";
+    print "</tr>\n";
+    
+    print "<tr>\n";
+    print "<td valign=top>Other Event ID 2:</td>";
+    print "<td align=left><b>$OtherEventID2</td>\n";
+    print "</tr>\n";
+    
+    print "<tr>\n";
+    print "<td valign=top>Tax Team:</td>";
+    print "<td align=left><b>$TaxTeam</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Other Institution:</td>";
+    print "<td align=left><b>$OtherEventInst</td>\n";
+    print "</tr>\n";
+
+    
+    print "</table>";
+
+    
+}
+
+sub print_column2 {
+
+    print "<table cellspacing=5 callpadding=5>\n";
+
+    # look for photo and get info, if there is a photo
+
+    $pic_query  = "select disknum, imgnum, photographer, copyright from img "; 
+    $pic_query .= "where specimen_no = 'EventID $EventID' and museum = 'Moorea Biocode'";
+    $tmp = &get_multiple_records($pic_query,"image");
+    if(-s "$tmp_dir/$tmp") {
+        open(FH, "$tmp_dir/$tmp") || die "Can't open photo tmp file $tmp ";
+        while ($pic = <FH>) {
+            ($disknum, $imgnum, $photographer, $copyright) = split(/\t/,$pic);
+            ($a, $b, $mmyy) = split(/\s/,$disknum);
+            $pic_count++;
+            $copyright = "$photographer &copy $copyright";
+
+            $picfile = "$calphotos_thumb_dir/$mmyy/$imgnum".".jpeg";
+            $picurl = "$calphotos_thumb_path/$mmyy/$imgnum".".jpeg";
+
+            if (-e $picfile) {
+                $piclink= "<img src=\"$picurl\" border=0>";
+            }
+        }
+    }
+
+    if($piclink) {
+       print "<tr>";
+       print "<td colspan=2>";
+       print "<table border cellpadding=5>";
+       print "<tr><td align=center><a href=http://calphotos.berkeley.edu/cgi/img_query?where-specimen_no=EventID+$EventID&where-museum=Moorea+Biocode>$piclink</a><br>";
+
+       if($pic_count == 1) {
+           $copyright =~ s/\s/&nbsp;/g;
+           print "<small>";
+           print "$copyright<br>";
+           print "<center>(1 of ";
+           print "<a href=http://calphotos.berkeley.edu/cgi/img_query?where-specimen_no=EventID+$EventID&where-museum=Moorea+Biocode>";
+           print "$pic_count photo</a>)\n";
+           print "</small>";
+       } else {
+           $copyright =~ s/\s/&nbsp;/g;
+           print "<small>";
+           print "$copyright<br>";
+           print "<center>(1 of ";
+           print "<a href=http://calphotos.berkeley.edu/cgi/img_query?where-specimen_no=EventID+$EventID&where-museum=Moorea+Biocode>";
+           print "$pic_count photos</a>)\n";
+           print "</small>";
+       }
+       print "</td>\n";
+       print "</tr>\n";
+       print "</table>";
+       print "</td>";
+       print "</tr>";
+    }
+
+
+
+    print "<tr>\n";
+    print "<td valign=top>Location:</td>";
+    print "<td align=left><b>$Locality\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>County:</td>";
+    print "<td align=left><b>$County";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>StateProvince:</td>";
+    print "<td align=left><b>$StateProvince";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Island:</td>";
+    print "<td align=left><b>$Island";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>IslandGroup:</td>";
+    print "<td align=left><b>$IslandGroup";
+    print "</td>\n";
+    print "</tr>\n";
+
+    
+    print "<tr>\n";
+    print "<td valign=top>Country:</td>";
+    print "<td align=left><b>$Country";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>ContinentOcean:</td>";
+    print "<td align=left><b>$ContinentOcean";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr><td valign=top><br></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Habitat:</td>";
+    print "<td align=left><b>$Habitat\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Microhabitat:</td>";
+    print "<td align=left><b>$MicroHabitat\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Elevation:</td>";
+    print "<td align=left><b>";
+    if ($MinElevationMeters) {
+	$mi_elev = &rm_decimal_trailing_zeros($MinElevationMeters);
+	print "$mi_elev m.";
+    }
+    if ($MaxElevationMeters) {
+	$ma_elev = &rm_decimal_trailing_zeros($MaxElevationMeters);
+	print " -  $ma_elev m.";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Depth:</td>";
+    print "<td align=left><b>";
+    if ($MinDepthMeters) { 
+	$MinDepthMeters = &rm_decimal_trailing_zeros($MinDepthMeters);
+	print "$MinDepthMeters m.";
+    }
+    if ($MaxDepthMeters) {
+	$MaxDepthMeters = &rm_decimal_trailing_zeros($MaxDepthMeters);
+        print "-  $MaxDepthMeters m.";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Depth of Bottom:</td>";
+    print "<td align=left><b>";
+    if ($DepthOfBottomMeters) { 
+	$DepthOfBottomMeters = &rm_decimal_trailing_zeros($DepthOfBottomMeters);
+	print "$DepthOfBottomMeters m.";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Latitude:</td>";
+    print "<td align=left><b>$DecimalLatitude\n";
+    if($DecimalLatitude2) {
+        print "-  $DecimalLatitude2";
+    }
+    print "</b> &nbsp;&nbsp;  ";
+    if ($VerbatimLatitude) {
+	print "<b>($VerbatimLatitude\n";
+        if($VerbatimLatitude2) {
+            print "-  $VerbatimLatitude2";
+        }
+        print ")</b>&nbsp;&nbsp;  ";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Longitude:</td>";
+    print "<td align=left> <b>$DecimalLongitude\n";
+    if($DecimalLongitude2) {
+        print "-  $DecimalLongitude2";
+    }
+    print "</b>&nbsp;&nbsp;\n";
+    if ($VerbatimLongitude) {
+	print "<b>($VerbatimLongitude\n";
+        if($VerbatimLongitude2) {
+            print "-  $VerbatimLongitude2";
+        }
+        print ")</b>&nbsp;&nbsp;  ";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Error radius:</td>";
+    print "<td align=left><b>$MaxErrorInMeters</b>";
+    print "&nbsp;&nbsp; Datum: &nbsp;&nbsp; <b>$HorizontalDatum</b>";
+    print "</td>\n";
+    print "</tr>\n";    
+
+    print "<tr><td valign=top><br></td></tr>\n";
+
+    print "</table>\n";
+}
+
+
+sub print_last_modified {
+
+    my $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+
+    print "<table cellspacing=5 callpadding=5 width=100%>\n";
+
+    print "<tr>\n";
+    print "<td valign=top>Remarks:</td>";
+    print "<td align=left><b>$Remarks\n";
+    print "</td>\n";
+    print "</tr>\n";
+    print "<tr><td valign=top><br></td></tr>\n";
+
+    # specimens for this collect. event
+    print "<tr><td valign=top colspan=2>\n";
+    $n_query = "select count(*) from biocode where Coll_EventID=$EventID";
+    ($num_specs) = &get_one_record($n_query,"biocode");
+    if ($num_specs > 0) {
+	print "<a href=/cgi/biocode_query?where-biocode.Coll_EventID=$EventID&OK2SHOWPRIVATE=1&$join>";
+	print "<li>View $num_specs specimen ";
+	if ($num_specs == 1) {
+	    print "record";
+	} else {
+	    print "records";
+	}
+	print "</a> from this Collecting Event \n";
+    } else {
+	print "<li>No specimens have been databased for this Collecting Event\n";
+    }
+    print "</td>\n";
+    print "</tr>\n";
+    print "<tr><td valign=top><br></td></tr>\n";
+    print "</table>\n";
+
+    print "<table>";
+    print "<tr>\n";
+    print "<td>";
+    print "<small><i>";
+    print "Record created by $EnteredBy $DateFirstEntered\n";
+    if ($DateLastModified) {
+	print "<br>Last modified by $ModifiedBy $DateLastModified";
+    }
+    if ($batch_id) {
+	print "<br>Batch ID $batch_id";
+    }
+    print "</small></i>";
+
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+
+    if ($DEBUG) {
+         print "<p>DEBUG_MSG<p>$debug_msg;";
+    }
+}
+
+sub download_biocode_collecting_event {
+    local($filename) = @_;
+    local($fields) = "";
+
+    #$fields = $displaylist;
+    #$fields = &get_simple_ce_selectlist;
+    #$fields =~ s/\,/\t/g;
+    #$fields .= "\n";
+
+    foreach $f (@biocode_collecting_event_schema) {
+        $fields .= "$f\t";
+    }
+    chop($fields); # remove extra tab
+    $fields .= "\n";
+    
+    print "Content-type: text/text\n\n";
+
+    print "$fields\n\n";
+
+    open(FH, "$tmp_file_location/$script_name/$filename")
+        || die "Can't open '$filename' file for reading";
+    while(<FH>) {
+	print "$_";
+    }
+}
+
+sub get_simple_ce_selectlist {
+
+    $selectlist = "";
+    foreach $e (@biocode_collecting_event_simple_display_schema) {
+        $selectlist .= "$e,";
+    }
+    $selectlist =~ s/,$//g;
+
+    return $selectlist;
+}
+
+
+
+sub get_bnhm_mapper_url_coll {
+
+    my ($url);
+
+
+    $xml = "$bm_coll_event_xml_file";
+    $tabfile = "$bm_coll_event_tabfile/$bmtmpfile"; 
+    # $tabfile = "tmpfiles_coll/$bmtmpfile"; 
+
+    ## note:  label=1 turns political labels on
+
+    $url = "http://bnhmmaps.berkeley.edu/index.php?ViewResults=tab&tabfile=$tabfile&configfile=$xml&sourcename=Moorea+Biocode+Collecting+Events&biocode=true&label=1&maptype=Satellite";
+
+    return $url;
+
+}
+
+
+
+sub print_update_link {
+
+    print "<table width=100% border>\n";
+    print "<tr>\n";
+    print "<td align=center>\n";
+    print "<small><nobr>";
+    $prev_num = $EventID -1;
+    $next_num = $EventID +1;
+
+    print "<a href=/cgi/biocode_collect_event_query?EventID=$prev_num&one=T&OK2SHOWPRIVATE=1>";
+    print "<<&nbsp;Prev&nbsp;[$prev_num]</a>\n";
+    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "<a href=/cgi/biocode_collect_event_query?EventID=$next_num&one=T&OK2SHOWPRIVATE=1>";
+     print "Next&nbsp;[$next_num]&nbsp;>></a>\n";
+    print "</nobr></td>\n";
+    print "<td align=left>\n";
+    print "<FORM ACTION=\"/cgi/biocode_add_collect_event\" METHOD=post>\n";
+    #print "<INPUT type=hidden name=step value=ckpasswd>\n";
+    print "<INPUT type=hidden name=special value=firstscreen>\n";
+    print "<input type=hidden name=mode value=update>\n";
+    print "<input type=hidden name=EventID value=\"$EventID\">\n";
+    print "<small>Correct this record [$EventID] ... ";
+    print "<br>Name:&nbsp;\n";
+    print "<select size=1 name=entry_by>\n";
+    print "<option selected>\n";
+    $submitter_list = "$select_list_path/submitters.txt";
+    open (S,$submitter_list);
+    while ($line = <S>) {
+	print $line;
+    }
+    close(S);
+    print "</select>\n";
+    print "Password:&nbsp;\n";
+    print "<input size=5 name=password type=password>\n";
+    print "<input type=submit value=go>\n";
+    print "</small></td></tr>\n";
+    print "</table>\n";
+
+}
+
+
+
+#sub get_eventID_img_info {
+#    # is there a photo for this specimen?
+#    $pic_count = 0;
+#    $query = "select * from biocode_photo where eventID = '$EventID'";
+#    $tmp = &get_multiple_records($query);
+#    if(-s "$tmp_dir/$tmp") {
+#        open(FH, "$tmp_dir/$tmp") || die "Can't open photo tmp file $tmp ";
+#        while ($pic = <FH>) {
+#            @row = split(/\t/,$pic);
+#            &fill_fields_with_values("biocode_photo");
+#            $pic_count++;
+#
+#            $picfile = "/data3/biocode/photos/thumbnails/CE$eventID"."_$photo_num".".jpg";
+#            $picurl = "/biocode/imgs/thumbnails/CE$eventID"."_$photo_num".".jpg";
+#
+#            if (-e $picfile) {
+#                $piclink= "<img src=\"$picurl\" border=0>";
+#            }
+#        }
+#    }
+#}
+
+

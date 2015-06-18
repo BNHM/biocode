@@ -1,0 +1,8 @@
+.well  {width:90px;height:30px;}
+.tissue_num  {float: left; width: 60%;height:100%;vertical-align:top;}
+.this_tissue  {float: left; width: 20%;height:100%;vertical-align:top;}
+.link { float:left ;width:20%;height:100%;color: #003399; vertical-align:top;margin: 0px 5px 5px 0px; }
+div.link:link {color: #003399; text-decoration:none; font-size:12px}
+div.link:visited {color: #666666; text-decoration:none; font-size:12px}
+div.link:hover {color: #003399; text-decoration:underline; font-weight:bold;font-size:14px;}
+div.link:active {color: #003399; text-decoration:none; font-size:12px}

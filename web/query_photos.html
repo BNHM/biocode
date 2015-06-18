@@ -1,0 +1,447 @@
+<!--#include virtual="headers_footers/title.html" -->
+Moorea Biocode Photo Database Query
+<!--#include virtual="headers_footers/head1.html" -->
+
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg height=70 border=0></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Photo Search
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png height=70 border=0></a>
+</td>
+</tr>
+</table>
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+
+
+<center>
+<i>See also the <a href=/generated/photos_phylum.html>Photo Browse Pages</a></i>
+</center>
+<p>
+
+<FORM ACTION="/cgi/biocode_img_query" METHOD="get">
+<input type=hidden name=stat value=ADVANCED>
+<input type=hidden name=query_src value=photos_custom>
+
+
+
+<p>
+
+<center>
+
+
+
+<table>
+<tr>
+<td>
+
+
+
+<table>
+<tr>
+<td align=right valign=top><small>Photo ID</small>
+</td>
+<td valign=right>
+<select name=rel-kwid>
+<option>begins with
+<option>ends with
+<option>contains
+<option selected>equals
+</select>
+<input name="where-kwid">
+</td>
+</tr>
+
+<tr>
+<td align=right valign=top><small>Biocode (MBIO) Specimen No.</small>
+</td>
+<td valign=right>
+<select name=rel-specimen_no>
+<option>begins with
+<option selected>equals
+</select>
+<input name="where-specimen_no">
+</td>
+</tr>
+
+
+<tr>
+<td align=right valign=top><small>Collector Specimen Number</small>
+</td>
+<td valign=right>
+<select name=rel-source_id_1>
+<option>begins with
+<option selected>equals
+</select>
+<input name="where-source_id_1">
+</td>
+</tr>
+
+<tr>
+<td align=right valign=top><small>Original filename</small>
+</td>
+<td valign=right>
+<select name=rel-orig_filename>
+<option selected>contains
+<option>begins with
+<option>equals
+</select>
+<input name="where-orig_filename">
+</td>
+</tr>
+
+
+
+<tr>
+<td align=right valign=top><small>Photographer</small>
+</td>
+<td>
+<select name=rel-photographer>
+<option>contains
+<option>begins with
+<option selected>equals
+</select>
+<input name="where-photographer">
+</td>
+</tr>
+
+
+
+<tr>
+<td align=right valign=top><small>Taxon</small>
+</td>
+<td valign=right>
+<select name=rel-taxon>
+<option selected>contains
+<option>begins with
+<option>equals
+</select>
+<input width=25 name="where-taxon">
+</td>
+</tr>
+
+<tr>
+<td align=right valign=top><small>Family</small>
+</td>
+<td valign=right>
+<select name=rel-family>
+<option>contains
+<option>begins with
+<option>equals
+<option>is null
+</select>
+<input width=25 name="where-family">
+</td>
+</tr>
+
+<tr>
+<td align=right valign=top><small>Order</small>
+</td>
+<td valign=right>
+<select name=rel-ordr>
+<option>contains
+<option>begins with
+<option>equals
+<option>is null
+</select>
+<input width=25 name="where-ordr">
+</td>
+</tr>
+
+
+
+<tr>
+<td align=right valign=top><small>Class</small>
+</td>
+<td valign=right>
+<select name=rel-class>
+<option>contains
+<option>begins with
+<option>equals
+<option>is null
+</select>
+<input width=25 name="where-class">
+</td>
+</tr>
+
+
+<tr>
+<td align=right valign=top><small>Phylum</small>
+</td>
+<td valign=right>
+<select name=rel-phylum>
+<option>contains
+<option>begins with
+<option>equals
+<option>is null
+</select>
+<input width=25 name="where-phylum">
+</td>
+</tr>
+
+
+<tr>
+<td align=right valign=top><small>Specific Location</small>
+</td>
+<td>
+<input type=hidden name=rel-location value=like>
+<input name="where-location">
+</td>
+</tr>
+
+
+
+
+<tr>
+<td align=right valign=top><small>Island</small>
+</td>
+<td>
+
+<input type=hidden name=rel-island value=like>
+<select name=where-island>
+<option selected>any
+<option>Bali
+<option>Bora Bora
+<option>Huahine
+<option>Maupiti
+<option>Mohotane
+<option>Moorea
+<option>Raiatea
+<option>Raivavae
+<option>Tahiti
+<option>Tahiti iti
+<option>Tahiti Nui
+<option>Tetiaroa
+</select>
+
+
+</td>
+</tr>
+
+
+
+
+<tr>
+<td align=right valign=top><small>Country</small>
+</td>
+<td>
+<input type=hidden name=rel-country value=equals>
+<select name=where-country>
+<option selected>any
+<option>French Polynesia
+<option>Indonesia
+</select>
+</td>
+</tr>
+
+
+<tr>
+<td align=right valign=top><small>Date of Photo</small>
+</td>
+<td valign=right>
+<select name=rel-photo_date>
+<option selected>equals
+<option>before
+<option>after
+</select>
+<input size=10 name="where-photo_date">
+<small>Example: 1995-01-31</small>
+</td>
+</tr>
+
+<tr>
+<td align=right valign=top><small>Index date<br>(upload date)</small>
+</td>
+<td valign=right>
+<select name=rel-index_date>
+<option selected>equals
+<option>before
+<option>after
+</select>
+<input size=10 name="where-index_date">
+<small>Example: 2001-02-20</small>
+</td>
+</tr>
+</table>
+
+</td>
+
+
+<td>
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+</td>
+
+
+
+
+
+<td>
+
+<table cellpadding=5 border=0>
+<tr>
+<td colspan=2 align=center>
+
+<small>
+<INPUT TYPE="submit" VALUE="Search">
+<INPUT TYPE="reset" VALUE="Reset">
+</small>
+</td>
+</tr>
+
+<tr>
+<td>
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+</td>
+</td>
+
+<tr>
+<td align=right valign=center>Show photos?
+</td>
+
+<td align=left valign=top>
+<input type=radio name=text_only value=1>no
+<input type=radio checked name=text_only value=0>yes
+</td>
+</tr>
+
+
+
+
+
+<tr>
+<td align=right valign=center>Records per page
+</td>
+<td align=left valign=top>
+<input name=max size=3 value=100>
+</td>
+</tr>
+
+<tr>
+<td align=right>Sort results first by
+<br>
+then by
+</td>
+<td valign=top>
+<select name=orderby1>
+<option selected>taxon
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+<br>
+<select name=orderby2>
+<option selected>any
+<!--#include  virtual="select_lists/displaylist.txt" -->
+
+</select>
+<small>
+
+</td>
+</tr>
+
+
+
+
+<tr>
+<td align=right valign=top colspan=2>
+For text-only display,
+choose fields & order:
+<br>
+
+<small>
+1st
+<select name=display1>
+<option selected>image ID num
+</select>
+
+<!-- these are all the same for 2-8 -->
+
+2nd
+<select name=display2>
+<option selected>taxon
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+
+<br>
+
+3rd
+<select name=display3>
+<option selected>family
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+
+4th
+<select name=display4>
+<option selected>ordr
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+
+<br>
+
+5th
+<select name=display5>
+<option selected>class
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+
+6th
+<select name=display6>
+<option selected>photographer
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+
+<br>
+
+7th
+<select name=display7>location
+<option selected>location
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+
+
+8th
+<select name=display8>
+<!--#include  virtual="select_lists/displaylist.txt" -->
+</select>
+
+</small>
+
+</td>
+
+</tr>
+</table>
+
+
+
+
+
+</td>
+</tr>
+
+</table>
+
+
+<input type=hidden name=where-collectn value=biocode>
+<input type=hidden name=rel-collectn value=eq>
+
+
+</form>
+
+<p>
+<hr width=70%>
+<p>
+<a href=generated/browse_photos.html>List of Photos by Family</a>
+
+
+
+<!--#include file="headers_footers/footer.html" -->

@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application 
+    xmlns:mx="http://www.adobe.com/2006/mxml" 
+    xmlns:local="*"
+    styleName="plain"
+    layout="vertical" 
+    creationComplete="
+	dataPhototype.send();
+    dataPhotographer.send();"
+    viewSourceURL="srcview/index.html">
+
+<mx:Script source="photo_upload.as"/>
+
+<mx:HTTPService id="dataPhototype"
+    url="/select_lists/calphotos_phototype.xml"
+    useProxy="false"
+    result="phototypeHandler(event)"
+    fault="phototypeHandlerfault(event)"
+    showBusyCursor="true"
+    resultFormat="e4x" /> 
+
+<mx:HTTPService id="photo_email"
+    url="/cgi/photo_email.cgi"
+    useProxy="false"
+	method="GET"
+    result="photo_emailHandler(event)"
+    fault="photo_emailHandlerfault(event)"
+    showBusyCursor="true"
+    resultFormat="e4x" > 
+  <mx:request>
+  <directory>{escapeMultiByte(directory.text)}</directory>
+  <photographer>{escapeMultiByte(photographerName)}</photographer>
+  <number>-9999</number>
+ </mx:request> 
+</mx:HTTPService>
+
+<mx:HTTPService id="dataPhotographer"
+    url="/select_lists/people.xml"
+    useProxy="false"
+    result="photographerHandler(event)"
+    fault="photographerHandlerfault(event)"
+    showBusyCursor="true"
+    resultFormat="e4x" /> 
+
+<mx:HTTPService id="dataDirectories"
+    url="/cgi/biocode_ajax.cgi"
+    useProxy="false"
+    result="directoriesHandler(event)"
+    fault="directoriesHandlerfault(event)"
+    showBusyCursor="true"
+    resultFormat="e4x"> 
+  <mx:request>
+    <format>xml</format>
+    <option>picDirs</option>
+    <picturespath>/data3/biocode/web/biocode_data/pictures</picturespath>
+    <photographer>{photographerName}</photographer>
+ </mx:request> 
+</mx:HTTPService>
+
+<mx:Script>
+<![CDATA[
+
+    import mx.rpc.events.*;
+    import mx.managers.PopUpManager;
+    import mx.collections.ItemResponder;
+    import mx.rpc.AsyncToken;
+
+    public var pop:photo_login;
+
+private function launchPhotoMatcher():void {
+    var urlRequest:URLRequest = new URLRequest("/photomanager/photomatch.htm?name=John+Deck");
+    navigateToURL(urlRequest,"_blank");
+}
+private function showLogin():void {
+    pop=photo_login(PopUpManager.createPopUp(this,photo_login,true));
+    pop.title="Please enter your login information.";
+    pop.showCloseButton=true;
+    PopUpManager.centerPopUp(pop);
+    pop.addEventListener("close",removeMe);
+    pop["cancelButton"].addEventListener("click",removeMe);
+    pop["okButton"].addEventListener("click",submit_click);
+}
+private function removeMe(event:Event):void {
+    PopUpManager.removePopUp(pop);
+}
+private function logout():void {
+     Login.visible=true;
+     Logout.visible=false;
+     addPhotosCanvas.visible=false;
+     addPhotosCanvas.percentWidth=0;
+     instructionsCanvas.percentWidth=100;
+     addPhotos.title="";
+}
+
+private function submit_click(event:Event):void {
+    //photographerName=mx.core.Application.application.ComboBox(event.target).selectedLabel; 
+    photographerName=pop.photographer.selectedLabel; 
+    //passwordText=pop.password.text;
+
+    // Synchronous Request Simulation using URLRequest to fetch password
+    var request : URLRequest = new URLRequest("/cgi/biocode_checkpass?format=xml&password="+pop.password.text+"&entry_by="+photographerName);
+    var loader : URLLoader = new URLLoader(request);
+    loader.addEventListener(Event.COMPLETE, function() : void {
+        data = XML(loader.data);
+        if (data.response[0]=="1") {
+            initApp(filesDG, BrowseBTN);
+            PopUpManager.removePopUp(pop);
+
+            Login.visible=false;
+            Logout.visible=true;
+            addPhotosCanvas.visible=true;
+            addPhotosCanvas.percentWidth=100;
+            instructionsCanvas.percentWidth=40;
+            addPhotos.title="Add Photos for Photographer "+photographerName;
+            //update the directories list for this photographer
+            dataDirectories.send();
+        } else {
+            Alert.show(data.response[0]);
+        }
+    });
+}
+
+    // Dynamic XML list to populate combobox
+    [Bindable] public var photographerData:XMLList;
+    [Bindable] public var directoriesData:XMLList;
+    [Bindable] public var phototypeData:XMLList;
+    //[Bindable] public var passwordResult:String='';
+
+    // Setting global variables to use for binding to directory drop-down list
+    // probably a better way to do this but this is what i could figure out to get to work -- JBD
+    //[Bindable] public var format:String="xml";
+    //[Bindable] public var option:String="picDirs";
+    //[Bindable] public var picturespath:String="/Users/biocode/Website/biocode/web/biocode_data/pictures";
+    [Bindable] public var photographerName:String="";
+    //[Bindable] public var passwordText:String="";
+
+    private function phototypeHandler(event:ResultEvent):void { 
+        phototypeData = event.result.photo as XMLList; 
+    }
+    private function phototypeHandlerfault(event:FaultEvent):void { 
+        mx.controls.Alert.show('System error in phototypeHandler. Message: '+event.toString()); 
+    }
+    private function photo_emailHandler(event:ResultEvent):void { 
+		//Alert.show('in photo_emailHandler');
+        //photographerData = event.result.person as XMLList; 
+    }
+    private function photo_emailHandlerfault(event:FaultEvent):void { 
+        mx.controls.Alert.show('System error in photo_emailHandler. Message: '+event.toString()); 
+    }
+    private function photographerHandler(event:ResultEvent):void { 
+        photographerData = event.result.person as XMLList; 
+    }
+    private function photographerHandlerfault(event:FaultEvent):void { 
+        mx.controls.Alert.show('System error in photographerHandler. Message: '+event.toString()); 
+    }
+    private function directoriesHandler(event:ResultEvent):void { 
+        directoriesData = event.result.directory as XMLList; 
+    }
+    private function directoriesHandlerfault(event:FaultEvent):void { 
+        mx.controls.Alert.show('System error in directoriesHandler. Message: '+event.toString()); 
+    }
+
+    ]]>
+</mx:Script>
+
+    <mx:Binding source="filesDG.selectedItems" destination="_selectedFiles" />
+
+    <mx:Form backgroundColor="white" width="97%" height="100%" paddingLeft="0" paddingTop="0" paddingBottom="0" paddingRight="0" borderThickness="0">
+            
+    <mx:HBox width="100%" horizontalAlign="left">
+        <mx:Text width="100%"  fontSize="14" fontWeight="bold">
+            <mx:text>Biocode PhotoManager</mx:text>
+        </mx:Text>
+
+    
+        <mx:HBox width="100%" horizontalAlign="right">
+            <mx:LinkButton id="Login" label="Login" click="showLogin();"/>
+            <mx:LinkButton id="Logout" label="Logout" click="logout();" visible='false'/>
+        </mx:HBox>
+    </mx:HBox>
+
+
+            <mx:HDividedBox id="addPhotosContainer" width="100%" height="450" backgroundColor='#FFFFFF'>
+            <mx:Canvas id="addPhotosCanvas" label="Canvas 1" width="0%" height="100%" backgroundColor="#FFFFFF" visible="false">
+            <mx:Panel id="addPhotos" width="100%" height="100%" borderColor="blue" title="Add Photos" >
+            <mx:DataGrid id="filesDG"  verticalScrollPolicy="auto">
+                <mx:columns>
+                <mx:DataGridColumn headerText="Photo"
+                  dataField="name" width="300" />
+                <mx:DataGridColumn headerText="Size"
+                  dataField="size" width="100" />    
+                <mx:DataGridColumn headerText="Parsed Specimen_Num_Collector"
+                  dataField="specimen_num_collector" width="250" />    
+                </mx:columns>     
+            </mx:DataGrid>
+            <mx:FormItem direction="horizontal">
+                <mx:Button width="80" label="Browse" id="BrowseBTN" />
+                <mx:Button width="80" label="Cancel" id="btn_cancel" enabled="false" click="fileRef.cancel()" />
+                <mx:Button width="136" label="Remove Selected" id="RemoveBTN" click="clearSelected()" />
+                <mx:Button width="110" label="Remove All" id="RemoveAllBTN" click="clearAll()" />
+                <mx:Button width="80" label="Upload" id="UploadBTN" click="uploadFiles()" enabled="false"  labelPlacement="left"/>
+            </mx:FormItem>
+
+            <mx:Form id="pnCustom" width="100%" height="100%">
+                <mx:FormItem id='directoryElements' label="Directory Name (to be created on server)"> 
+                    <mx:ComboBox id='directory' name='directory' width="225" editable="true" dataProvider="{directoriesData}" labelField="@label"/>
+                </mx:FormItem>
+                <mx:FormItem id='phototypeElements' label="Photo Type (CalPhotos classification)"> 
+                    <mx:ComboBox id='phototype' name='phototype' width="225" editable="false" dataProvider="{phototypeData}" labelField="@label"/>
+                </mx:FormItem>
+                <mx:FormItem direction="horizontal" label="Date Taken">
+                    <mx:FormItem label="Begin">
+                        <mx:DateField id='begin_date' name='begin_date' width='100' yearNavigationEnabled="true" formatString="YYYY/MM/DD"/>
+                    </mx:FormItem>
+                    <mx:FormItem label="End">
+                        <mx:DateField id='end_date' name='end_date' width='100' yearNavigationEnabled="true" formatString="YYYY/MM/DD"/>
+                    </mx:FormItem>
+                </mx:FormItem>
+                <mx:FormItem label="Camera Type"> 
+                    <mx:TextInput id='cameratype' name='cameratype' width='100' text='' />
+                </mx:FormItem>
+                <mx:LinkButton id="runPhotoMatcher" label="Run PhotoMatcher" click="launchPhotoMatcher();"/>
+            </mx:Form>
+
+            </mx:Panel>
+            </mx:Canvas>
+
+            <mx:Canvas id="instructionsCanvas" label="Canvas 2" width="100%" height="100%" backgroundColor="#FFFFFF">
+                <mx:Panel width="100%" height="100%" borderColor="blue" title="Help">
+                    <mx:Text width="100%">
+                        <mx:htmlText>
+<![CDATA[
+<b>Instructions:</b>
+<p>
+<li>Click "login" from the upper right corner and login using your Biocode User Name and Password</li>
+<li>Select the photos you wish to upload to the server using the "Browse" button</li>
+<li>If you have named your image names after your specimen_num_collector using the <a href="http://biocode.berkeley.edu/photo_batch_help.html"><b><font color="#0000FF">biocode image naming conventions</font></b></a>, then the specimen_num_collector name will be displayed.  It is up to the user to verify that the specimen names will match actual specimens in the database upon upload. </li>
+<li>Choose a Directory to upload them to or create a new Directory by typing it into the ComboBox.  A list of all your previously uploaded directories will appear in the drop-down box.</li>
+<li>Files will be uploaded to server with "Photographer Name-Directory Name".</li>
+<li>Once files have been uploaded, you can view them in the <a href='/photomanager/photomatch.htm'><b><font color="#0000FF">PhotoMatcher</font></b></a></li>
+<p>
+            </mx:Form>
+]]>
+
+                        </mx:htmlText>
+                    </mx:Text>
+                </mx:Panel>
+            </mx:Canvas>
+        </mx:HDividedBox>
+
+            	<mx:Panel width="100%" title="Progress" borderColor="gray">
+                	<mx:ProgressBar id="progressBar" mode="manual"  height="55"/>
+            	</mx:Panel>
+
+            	<mx:Panel width="100%" title="Events" borderColor="gray">
+                	<mx:TextArea id="ta" width="100%" height="55" minHeight="0" />
+            	</mx:Panel>
+
+    </mx:Form>
+
+</mx:Application>

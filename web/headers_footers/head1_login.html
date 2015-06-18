@@ -1,0 +1,53 @@
+</title>
+
+<link rel="shortcut icon" href="http://biocode.berkeley.edu/favicon.ico" type="image/x-icon">
+
+<style type="text/css">
+
+p, td, th, body {font-family: arial, verdana, helvetica, sans-serif;}
+p, td, th, body {font-size: 12px;}
+a.nounderline {
+        text-decoration: none;  /* this removes underlining */
+        color:  white;
+        outline: none;
+        }
+
+
+</style>
+
+</head>
+<body bgcolor=white onload='checkLogin();'>
+
+<div>
+    <div id=identity></div>
+    <div id=spacer></div>
+    <div id=logcontrol onclick='logControlClick(this.innerHTML)';>login</div>
+</div>
+
+
+<div id=loginBox>
+    <form action="/cgi/biocode_checkpass" name=loginform id=loginform method="get">
+    <fieldset id="identification">
+    <legend>Identification</legend>
+    <dl>
+    <dt><label for="login">Login</label></dt>
+    <dd><select id=login name=entry_by></select>
+    <dt><label for="pwd">Password</label></dt>
+    <dd><input type="password" name="password" id="pwd" size="10" /></dd>
+    </dl>
+    <input type="hidden" name="refer" value="http://biocode.berkeley.edu/" />
+    <p><input type="submit" value="submit" />
+    </fieldset>
+    </form>
+</div>
+
+<!-- blue color=669ACC  gray color=gray -->
+<center>
+  <table cellpadding=0 cellspacing=0 border=0 width="90%">
+    <tr>
+      <td bgcolor=#669ACC width=5%></td>
+      <td bgcolor=#FFFFFF valign=top>
+      <table cellpadding=5 border=0>
+        <tr>
+          <td><font face='Helvetica,Arial,Verdana' size="+2">
+

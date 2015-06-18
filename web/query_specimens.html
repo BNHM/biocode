@@ -1,0 +1,260 @@
+<!--#include virtual="headers_footers/title.html" -->
+Moorea Biocode Specimen Database Query
+<!--#include virtual="headers_footers/head1.html" -->
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg border=0 height=70></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Databases
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png border=0 height=70></a>
+</td>
+</tr>
+</table>
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+<blockquote>
+       <center>
+       <small>
+       <i>
+       Back to: <a href=http://biocode.berkeley.edu>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <p>
+
+See also: 
+
+&nbsp;&nbsp;<a href=advanced.html>Advanced Database Query</a>
+&nbsp;&nbsp;<a href=generated/Browse.html>Browse by Scientific Name</a>
+<p>
+<br>
+<b>Total records = <!--#include virtual="select_lists/total_biocode.txt" -->
+</b>
+
+<p>
+Type all or part of a word, case unimportant, or choose a word from a drop-down list.
+If more than one field is completed, the search will look for records that meet
+both conditions.
+
+<form method=get action="/cgi/biocode_query">
+<input type=hidden name=query_src value=biocode_queryspecimens>
+
+<input type=hidden name=jointables value="biocode_collecting_event,biocode,biocode_tissue">
+<input type=hidden name=joincolumns value="biocode.Coll_EventID = biocode_collecting_event.EventID">
+
+
+          <table border=0 cellpadding="2" cellspacing="2">
+
+
+
+            <tr valign="middle"> 
+
+              <td align=right>Biocode No.</td>
+              <td>
+                <select name=rel-biocode.bnhm_id>
+                <option>equals
+                <option>begins with
+                <option selected>contains
+                </select>
+                </td>
+                <td>
+                <input name=where-biocode.bnhm_id>
+		<small><i>Example: MBIO56</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right>Collector's Specimen No.</td>
+              <td>
+              <select name="rel-biocode.Specimen_Num_Collector">
+                <option>begins with
+                <option selected>contains
+                <option>ends with
+                <option>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.Specimen_Num_Collector">
+	      <small>Example: <i>BMOO_01727</i></small>
+	      </td>
+            </tr>
+
+
+
+	      <td align=right>Sci. Name</td>
+              <td>
+		<select name=rel-biocode.ScientificName>
+		<option selected>contains
+		<option>begins with
+		<option>equals
+		</select>
+                </td>
+                <td>
+                <input name=where-biocode.ScientificName>
+		<small><i>&nbsp;Example: Enneapterygius hemimelas</i></small>
+              </td>
+            </tr>
+
+	    
+            <tr>
+
+	      <td align=right>Locality</td>
+              <td>
+
+              <select name="rel-biocode_collecting_event.Locality">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td>
+              <input name="where-biocode_collecting_event.Locality">
+	      <small><i>Example:Matautia </i></small>
+              </td>
+            </tr>
+
+
+
+            <tr>
+              <td align=right>Biocode Event ID #</td>
+              <td>
+	      <select name="rel-biocode.Coll_EventID">
+                <option selected>equals
+                </select>
+                </td>
+                <td>
+		<input name=where-biocode.Coll_EventID>
+		<small><i>Example: 4</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right>Collector's Event ID #</td>
+              <td>
+              <select name="rel-biocode_collecting_event.Coll_EventID_collector">
+                <option selected>equals
+                <option>contains
+                <option>begins with
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode_collecting_event.Coll_EventID_collector">
+	      <small>Example: <i>GP-Loc-896</i></small>
+	      </td>
+            </tr>
+
+            <tr>
+              <td align=right>Collected by</td>
+              <td>
+	      <select name="rel-biocode_collecting_event.Collector_List">
+                <option selected>contains
+                </select>
+                </td>
+                <td>
+		<input name=where-biocode_collecting_event.Collector_List>
+		<small><i>Example: serge</i></small>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right> Plate name</td>
+              <td>
+              <select name="rel-biocode_tissue.format_name96">
+              <option selected>equals
+                </select>
+                </td>
+              <td>
+              <select name="where-biocode_tissue.format_name96">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/format_name96.txt" -->
+              </select>
+            </td>
+            </tr>
+
+            <tr>
+
+              <td align=right>Tax Team</td>
+              <td>
+
+              <select name="rel-biocode_collecting_event.TaxTeam">
+                <option selected>equals
+                </select>
+              </td>
+              <td>
+              <select name="where-biocode_collecting_event.TaxTeam">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/TaxTeam.txt" -->
+              </td>
+            </tr>
+
+
+
+	    <tr>
+              <td><br></td>
+            </tr>
+
+	    <tr>
+	      <td>
+	      <b>Sort results by:</b>
+	      </td>
+	      <td colspan=2>
+              <small>
+              <input type=radio checked name=orderby value="CatalogNumberNumeric">MBIO number&nbsp;
+	      <input type=radio name=orderby value="Family|ScientificName">Family, Scientific Name&nbsp;
+	      <input type=radio name=orderby value="StateProvince|County|Locality">State/Prov, County, Locality&nbsp;
+	      <input type=radio name=orderby value="Collector|YearCollected">Collector, Year&nbsp;
+              </small>
+	      </td>
+            </tr>
+
+
+	    <tr>
+	      <td>
+	      <b>Make download file:</b>
+	      </td>
+	      <td colspan=2>
+              <input type=checkbox name=downloadfile value=1>
+              &nbsp;
+              &nbsp;
+              &nbsp;
+              format:
+              <select name="downloadformat">
+                <option selected>all fields (tab delimited)
+                <option>MVZ fields (tab delimited)
+                <option>Biocode Excel Bulk Upload
+                <option>SI-EMU (Excel)
+                </select>
+	      </td>
+            </tr>
+
+
+	     <tr>
+              <td><br></td>
+              <td align=left colspan=2>
+	      <input type="submit" name="Search" value="Search">
+	      <input type="reset" name="Reset" value="Reset">
+	      </td>
+            </tr>
+
+
+
+	    </table>
+
+
+</form>
+</blockquote>
+
+
+
+<!--#include virtual="headers_footers/footer.html" -->

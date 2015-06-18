@@ -1,0 +1,79 @@
+#####################################
+# COPY THIS FILE TO biocode_settings
+#####################################
+#!/usr/bin/perl
+
+$g_db_location = "db_location";
+$g_db_user = "db_username";
+$g_db_pass = "db_password";
+
+
+# For biocode_add_photos
+
+$thumbnails_dir = "/data2/images/128x192/4444_4444";
+$enlargements_dir = "/data2/images/512x768/4444_4444";
+$originals_dir = "/data3/biocode/photos/originals";
+$writefiles_dir = "/data3/biocode/photos/upload";
+
+# for many cgi scripts where data is added/edited -- email sent to these recipients:
+
+# $recipients = "joyceg\@berkeley.edu jdeck88\@gmail.com";
+$recipients = "jdeck88\@gmail.com";
+
+# For mybiocode_utils.p
+
+$extractRoot= "/data3/biocode/web/biocode_data/extracts/";
+$select_list_path =      "/data3/biocode/web/select_lists";
+$biocode_url = "http://biocode.berkeley.edu";
+
+$calphotos_thumb_dir = "/data2/images/128x192/4444_4444";
+$calphotos_thumb_path = "http://biocode.berkeley.edu/imgs/128x192/4444_4444";
+
+$photomatcher_thumb_dir = "/data3/biocode/photos/ID_folders";          # calphotos sizes   # calthumbs
+$photomatcher_enlargement_dir = "/data3/biocode/photos/ID_folders";    # ~1000 pixel wide  # midres
+$photomatcher_img_path = "http://biocode.berkeley.edu/imgs_photomanager/ID_folders";
+
+# For biocode_collect_event_query
+$bm_coll_event_xml_file = "http://biocode.berkeley.edu:8000/biocode_coll.xml";
+$bm_coll_event_tabfile = "http://biocode.berkeley.edu:8000/tmpfiles_coll";
+
+# For biocode_query
+$bm_specimen_xml_file = "http://biocode.berkeley.edu:8000/biocode.xml";
+$bm_specimen_tabfile = "http://biocode.berkeley.edu:8000/tmpfiles";
+
+# myimg_utils
+
+$IMG_PARTITION = "/data2/images";
+
+
+# used by quite a few cgi scripts
+
+$tmp_file_location = "/data1/tmp";
+# in this directory is -- right now need to create on local server:
+# Weekly
+# biocode_query
+# unknown_query
+# biocode_collect_event_query
+# biocode_tissue_query
+
+$one_up_tmp_file_location = "/data1";
+
+
+# biocode_login.pl
+
+$port_8000_html_dir = "/usr/local/web/test/biocode/web";
+$port_80_html_dir = "/usr/local/web/biocode/web";
+$headers_footers = "headers_footers";
+
+
+# myquery_utils 
+
+$production_query_log_dir = "/data1/querylogs/production";
+$test_query_log_dir = "/data1/querylogs/test";
+
+
+# needed by /usr/local/web/biocode/scripts/cron/make_biocode_sciname_browselist_new.p
+
+$testdir = "/usr/local/web/test/biocode/web/generated";
+$proddir = "/usr/local/web/biocode/web/generated";
+

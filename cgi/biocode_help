@@ -1,0 +1,34 @@
+#!/usr/bin/perl
+
+# biocode_help copied from ucmp_help  6/28/04 Colleen
+# generates context_specific help from a template
+
+require "utils.p";
+require "mybiocode_utils.p";
+require "myquery_utils.p";
+
+#   $DEBUG = 1;
+
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+
+&print_biocode_popup_header("Help: Moorea Biocode Specimen DB");
+
+$page = $input{page};
+$help_page = "/usr/local/web/test/bscit/biocode/help/" . "$page.inc";
+
+&get_help_text;
+&print_biocode_popup_footer;
+
+
+sub get_help_text {
+
+    open(FH, "$help_page") || die "Can't open help file $help_page for reading";
+ 
+    while(<FH>) {
+  	print "$_";
+    }
+    close(FH);
+    print "</p>\n";
+}
+

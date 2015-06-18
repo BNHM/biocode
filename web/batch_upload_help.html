@@ -1,0 +1,391 @@
+<!--#include virtual="headers_footers/head1.html" -->
+
+Batch Upload Biocode Records -- Help Page
+
+<!--#include virtual="headers_footers/head2.html" -->
+
+       <!-- insert side bar links here -->
+
+<!--#include virtual="headers_footers/head3.html" -->
+
+
+<p>
+<blockquote>
+
+See also <a href=photo_batch_help.html>Batch Loading Photos: Help Information</a>.
+<table cellpadding=4 border>
+
+<tr>
+<td colspan=2>
+<b>Required Fields on Collecting Events Sheet</b>
+</td>
+</tr>
+
+<tr>
+<td>
+Coll_EventID_collector
+</td>
+<td>
+Your own collecting event number (ie, "station number"). 
+</td>
+</tr>
+
+<tr>
+<td>
+EnteredBy
+</td>
+<td>
+Person who is entering these records. Has to be a name <a href=/query_people.html>already in the database</a>, or you can 
+<a href=people_add_upd.html>add it to the database</a>. 
+</td>
+</tr>
+
+<tr>
+<td>
+Country
+</td>
+<td>
+Country where the specimen was collected.
+</td>
+</tr>
+
+<tr>
+<td>
+YearCollected
+</td>
+<td>
+Year -- must be four digits.
+</td>
+</tr>
+
+<tr>
+<td>
+MonthCollected
+</td>
+<td>
+Possible values: 1-12
+</td>
+</tr>
+
+
+<tr>
+<td colspan=2>
+<b>Required Fields on Specimens Sheet</b>
+</td>
+</tr>
+
+<tr>
+<td>
+Coll_EventID_collector
+</td>
+<td>
+Your own collecting event number (ie, "station number"). Has to be on Collecting Events worksheet, or 
+<a href=query_collectingevents.html>already in the database</a>.
+</td>
+</tr>
+
+<tr>
+<td>
+EnteredBy
+</td>
+<td>
+Person who is entering these records. Has to be a name <a href=/query_people.html>already in the database</a>, or you can 
+<a href=people_add_upd.html>add it to the database</a>. 
+</td>
+</tr>
+
+<tr>
+<td>
+Specimen_Num_Collector
+</td>
+<td>
+Your own specimen number.
+</td>
+</tr>
+
+<tr>
+<td>
+Phylum
+</td>
+<td>
+The reason we ask for at least phylum is for processing back at the lab - often we might not get annotated 
+taxonomy for a while, but we can move ahead and sequence without it - however we do need to know what 
+primers to use - the phylum key gives us sufficient info for that for the time being. 
+</td>
+</tr>
+
+<tr>
+<td>
+HoldingInstitution
+</td>
+<td>
+The institution where this specimen will be accessioned. If it won't be accessioned, enter "No Voucher" into the field.
+If your institution isn't on the list, please email John or Joyce and we'll add it.
+</td>
+</tr>
+
+
+
+<tr>
+<td colspan=2>
+<b>Taxonomy</b>
+<p>
+For taxonomy, you can either
+<dl>
+<dd>1)</b> use the LowestTaxon/LowestTaxonLevel columns, or</dd>
+<dd>2)</b> fill out columns 
+with the usual taxonomy level headings (Family, Genus, SpecificEpithet, etc.) 
+Taxonomy levels allowed are listed <a href=http://biocode.berkeley.edu/sql/biocode.txt>here</a>.</dd>
+</dl>
+<p>
+The LowestTaxon/LowestTaxonLevel
+fields were created for people who want to enter data quickly but don't want 5 or 10 or 15 columns just for taxonomy
+in their Excel files.
+</td>
+</tr>
+<tr>
+<td bgcolor=669966>
+LowestTaxon
+</td>
+<td bgcolor=669966>
+Any name at any taxonomic level. Please do not put multiple levels in this field, with
+the exception of 'Genus + SpecificEpithet' or 'Genus + SpecificEpithet + SubSpecificEpithet'.
+</td>
+</tr>
+<tr>
+<td bgcolor=669966>
+LowestTaxonLevel
+</td>
+<td bgcolor=669966>
+Examples: Family, Tribe, Genus, Genus_and_Species. (Genus_and_Species can include the subspecies also.)
+</td>
+</tr>
+
+<tr>
+<td bgcolor=99ff99>
+Ordr
+</td>
+<td bgcolor=99ff99>
+Yes, it's spelled Ordr! Order is a reserve word in mysql.
+</td>
+</tr>
+
+<tr>
+<td bgcolor=99ff99>
+Genus
+</td>
+<td bgcolor=99ff99>
+Genus only.
+</td>
+</tr>
+
+<tr>
+<td bgcolor=99ff99>
+SpecificEpithet
+</td>
+<td bgcolor=99ff99>
+SpecificEpithet only.
+</td>
+</tr>
+
+<tr>
+<td bgcolor=99ff99>
+SubSpecificEpithet
+</td>
+<td bgcolor=99ff99>
+SubSpecificEpithet only.
+</td>
+</tr>
+
+<tr>
+<td>
+Taxon_Certainty
+</td>
+<td>
+Indicates the level of certainty of the taxonomic name. Choose from the menu:
+<li>cf.  -- "confer" (compare with)
+<li>aff. -- "affinis" (similar to)
+<li>? -- not sure about the identification
+</td>
+</tr>
+
+<tr>
+<td colspan=2>
+<b>Tissue Fields</b>
+</td>
+</tr>
+
+<tr>
+<td>
+tissue_type_well
+</td>
+<td>
+The part of the organism put into the well. Examples: toe, blood, gut, flower.
+</td>
+</tr>
+
+<tr>
+<td>
+tissue_type_preserved
+</td>
+<td>
+The part of the organism preserved. Examples: whole animal, toe, gut, flower.
+</td>
+</tr>
+
+<tr>
+<td>
+tissue_barcode
+</td>
+<td>
+Unique, machine-readable barcode from vial, container or storage unit. For archival tissues.
+</td>
+</tr>
+
+
+<tr>
+<td colspan=2>
+<b>Other Specimen Fields</b>
+</td>
+</tr>
+
+
+<tr>
+<td>
+MorphoSpecies_Description
+</td>
+<td>
+A unique, descriptive name to be applied consistently to all specimens of a recognized morphospecies or variant whose specific identity is uncertain.
+</td>
+</tr>
+
+<tr>
+<td>
+MorphoSpecies_Match
+</td>
+<td>
+Reference to a Specimen_Num_Collector that is considered to be of the same morphospecies, to indicate identity through such reference.
+</td>
+</tr>
+
+<tr>
+<td>
+DecimalLatitude
+<br>
+DecimalLongitude
+</td>
+<td>
+For <b>decimal</b> latitudes and longitudes. Example: -17.49460 -149.86190 
+<br>
+The BerkeleyMapper required latitudes and longitudes to be in decimal format.
+<br>
+<li>To change coordinate settings to decimal degrees in Google Earth, go under the Preferences option and change the setting.
+<li>Coordinate settings can also be changed in any GPS device.
+</td>
+</tr>
+
+
+<tr>
+<td>
+VerbatimLatitude
+<br>
+VerbatimLongitude
+</td>
+<td>
+The latitude and longitude in Degrees/Minutes/Seconds format.
+<p>
+Examples of acceptable formats:
+<ul>
+<li>16&#176; 27' 00 S
+<li>156&#176; 23' 29'' W
+<li>04 0 0 N
+<li>34 12 27.6 N
+<li>36&#176; 54.947' S
+<li>071 27.417 W
+<li>S17.54990
+</ul>
+<p>
+For deg/min/sec:
+<br>
+Four fields, each separated by one space. No minus signs, no alpha characters. 3rd field can be a decimal number. 4th field must be E,W,N, or S.
+<br>
+For deg/dec min:
+<br>
+Three fields, each separated by one space. No minus signs, no alpha characters. 3rd field must be E,W,N, or S.
+
+<p>
+<b>Automatic conversion to decimal</b> &nbsp;
+This Lat/Lon will be automatically converted to decimal lat/longs
+when the record is submitted. Decimal is required for displaying points in the BerkeleyMapper.
+<p>
+Please consider setting your GPS to record lat/longs in decimal degrees so we don't have to do any conversions.
+
+</td>
+</tr>
+
+<tr>
+<td>
+specimen_Habitat
+<br>
+specimen_MicroHabitat
+</td>
+<td>
+The Habitat and MicroHabitat fields are also on the collecting event sheet. You should only record them in your specimen
+sheet if they are different from the values in your collecting events.
+</td>
+</tr>
+
+
+<tr>
+<td>
+Associated_Taxon
+</td>
+<td>
+Also known as Host.
+</td>
+</tr>
+
+
+
+</table>
+
+<p>
+
+<table cellpadding=4 border>
+
+<tr>
+<td colspan=2>
+<b>Additional Information</b>
+</td>
+</tr>
+
+<tr>
+<td>
+Order of columns
+</td>
+<td>
+Yes, you can move the columns around into whatever order you like, or delete columns you don't need (except for the required ones which are highlighted in yellow).
+</td>
+</tr>
+
+<tr>
+<td>
+Adding columns
+</td>
+<td>
+Many of the fields in the <a href=/sql/biocode_collecting_event.txt>collecting event</a> and 
+<a href=/sql/biocode.txt>specimen</a> tables can be added to the spreadsheet, if they aren't there already. 
+(There are a few exceptions -- some fields are generated during the upload process, such as DateFirstEntered, DateLastModified, and batch_id.)
+If you add a field and get an error, email Joyce or John -- even if the field is in the schema, it needs to be enabled for bulk uploads.
+</td>
+</tr>
+
+
+</table>
+
+
+
+</blockquote>
+
+
+<!--#include virtual="headers_footers/footer.html" -->

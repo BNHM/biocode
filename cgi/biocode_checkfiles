@@ -1,0 +1,35 @@
+#!/usr/bin/perl -w
+
+# September 16, 2009
+# JBD script to return name of any matched specimen_num_collectors, called from flex app to display 
+# matched names to user
+
+require "myquery_utils.p";
+require "myschema.p";
+require "utils.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+use File::Find;
+use File::Basename;
+use CGI;
+
+# URL parsing utility
+&readParseNoOutNoPlus(*input);
+
+# Print Header
+my $query = new CGI;
+print $query->header;
+
+# Multiple files on input
+# take input as a string separated by | with names, then loop them to print output
+@arrNames = split(/\|/,$input{names});
+foreach $n (@arrNames) {
+	$n=~s/null//;
+	print checkSpecimenNumCollector($n)."|";
+}
+
+# Single file on input
+# Echo output from function
+# Error code is -9999 and all other output means a positive match was found
+#print checkSpecimenNumCollector($input{names});

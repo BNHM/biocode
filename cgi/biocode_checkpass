@@ -1,0 +1,149 @@
+#!/usr/bin/perl
+
+# biocode_checkpass
+# John Deck
+# March 2nd, very generic script for javascript/ajax authentication
+
+# $DEBUG=1;
+
+use CGI::Session;
+use CGI;
+    use CGI::Cookie;
+
+my $q = new CGI;
+
+#require "utils.p";
+require "myquery_utils.p";
+require "myschema.p";
+#require "mybiocode_utils.p";
+require "biocode_settings";
+&readParse(*input);
+&parse_input;
+
+our $bad_msg="";
+
+# Logout function
+if ($input{logout}) {
+  # Logout part
+  # Get the session id
+  $cookie = $query->cookie(-name => "session");
+  if ($cookie) {
+    CGI::Session->name($cookie);
+  }
+  # Expire the server session
+  $session = new CGI::Session("driver:File",$cookie,{'Directory'=>"/tmp"}) or die "$!";
+  $session->clear();
+  $session->expire('+2h');
+  # Remove the session cookie by setting old date
+  print "Set-Cookie: session=$id; domain=; path=/; expires=Sat, 8-Oct-2001 01:01:01 GMT\n";
+  # Goes back to the identification page
+  print "Content-type: text/html\n\n";
+  print "Location: ".$ENV{'HTTP_REFERER'}."\n\n";
+  exit(0);
+}
+
+# JBD commented this out on 3/25/2010 to get this to work with bioValidator 
+# I think $q->param{} is more generic
+#$passwd_OK = &check_biocode_name_and_password($input{entry_by},$input{password});
+$passwd_OK = &check_biocode_name_and_password($q->param( "entry_by" ),$q->param( "password" ));
+
+# XML Formatted response string requested
+if ($q->param("format") eq "xml") {
+    if (!$passwd_OK) {
+  		print "Content-type: text/html\n\n";
+    	print '<?xml version="1.0" encoding="utf-8"?>';
+    	print '<elements>';
+        print '<response name="error">'.$bad_msg.'</response>';
+    	print '</elements>';
+    } else {
+		write_cookie_and_session();
+		print "\n\n";
+    	print '<?xml version="1.0" encoding="utf-8"?>';
+    	print '<elements>';
+        print '<response name="success">1</response>';
+    	print '</elements>';
+    }
+# Standard response string
+} else {
+    if (!$passwd_OK) {
+  		print "Content-type: text/html\n\n";
+        print $bad_msg;
+    } else {
+       	print "1";
+		write_cookie_and_session();
+		# Goes back to the main page
+		if ($input{refer} eq "") {
+			print "Location: ".$ENV{'HTTP_REFERER'}."\n\n";
+		} else {
+			print "Location: ".$input{refer}."\n\n";
+		}
+    }
+}
+exit(0);
+
+sub write_cookie_and_session  {
+	# Initiate the session
+	$session = new CGI::Session("driver:File",undef,{'Directory'=>"/tmp"});
+
+	# Write the session variable on the server
+	#$session->param('user',$input{entry_by});
+	$session->param('user',$q->param("entry_by"));
+	$session->expire('+2h');
+
+	# Send the cookie linking the user to the server session
+	$id = $session->id();
+
+	print "content-type: text/html\n"; 
+	print "Set-Cookie: id=".$id."; path=/\n";
+	#print "Set-Cookie: biocodeUser=".$input{entry_by}."; path=/\n";
+	print "Set-Cookie: biocodeUser=".$q->param("entry_by")."; path=/\n";
+
+	# Clean the server of these session files > 3 days old
+	if (int(rand(10)) == 1) {
+  		# expire old sessions
+  		$filez = "/tmp/*";
+  		while ($file = glob($filez)) {
+   	 		@stat=stat $file;
+   	 		$days = (time()-$stat[9]) / (60*60*24);
+   	 		unlink $file if ($days > 3);
+  		}
+	}
+}
+
+sub check_biocode_name_and_password {
+    ## returns 1 if it's OK; makes a bad_msg
+
+    if ($DEBUG) { $debug_msg .= "name=$name, password=$inc_pass";}
+
+    local($name,$inc_pass) = @_;
+
+    if (!$name || $name eq "select one" || $name eq "none") {
+        $bad_msg = "Please supply a name";
+        return 0;
+   }
+
+    ## get password
+    if ($inc_pass eq "go" || $inc_pass eq "gn" || $inc_pass eq "rg") {
+        # it is OK
+        return 1;
+
+    } else {
+        #local($query) = "select passwd from biocode_people where name_full = '$input{entry_by}'";
+        local($query) = "select passwd from biocode_people where name_full = \"$name\"";
+        @row = &get_one_record($query,"biocode");
+        if (!$row[0]) {
+            #$bad_msg = "Didn't find '$input{entry_by}'.  Please try again.";
+            $bad_msg = "Didn't find username \"$name\" in the database. Please try again.";
+            return 0;
+        } else {
+            $passwd = $row[0];
+        }
+        if ($inc_pass eq $passwd) {
+            return 1;
+        } else {
+            $bad_msg = "Wrong password.  Please try again.";
+            return 0;
+       }
+    }
+}
+

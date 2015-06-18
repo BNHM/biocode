@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" autoLayout="true">
+    <mx:Form>
+        <mx:FormItem label="Photographer">
+            <mx:ComboBox id='photographer' 
+                name='photographer' 
+                width="150" 
+                dataProvider="{mx.core.Application.application.photographerData}" 
+                labelField="@label" />
+        </mx:FormItem>
+        <mx:FormItem label="Password">
+            <mx:TextInput id="password" 
+                text=""
+                maxChars="16"
+                displayAsPassword="true"
+                focusIn="password.displayAsPassword = true;"
+                focusOut="password.displayAsPassword = true;" 
+                width="100%" />
+        </mx:FormItem>
+    </mx:Form>
+    <mx:HBox>
+        <mx:Button label="OK" id="okButton" />
+        <mx:Button label="Cancel" id="cancelButton" />
+    </mx:HBox>
+</mx:TitleWindow>

@@ -1,0 +1,224 @@
+<!--#include virtual="headers_footers/title_platematcher.htm" -->
+Moorea Biocode Platematcher
+<!--#include virtual="headers_footers/head1_login.html" -->
+
+<script>
+	format_name96=arrParams['batch'];
+	field1=arrParams['field1'];
+	field2=arrParams['field2'];
+	field3=arrParams['field3'];
+	platematcher=arrParams['platematcher'];
+	submit=arrParams['submit'];
+	newTissueName=arrParams['newTissueName'];
+</script>
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg height=70 border=0></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Databases
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png height=70 border=0></a>
+</td>
+</tr>
+</table>
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+<noscript>
+<p><b><center>PlateViewer and Platematcher require Javascript to be enabled to use them.<p>A recent browser, preferably Firefox helps too!</center></b></p>
+</noscript>
+
+<blockquote>
+       <center>
+  <small>
+       <i>
+       Back to: <a href=http://biocode.berkeley.edu/>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <p>
+<p>
+
+<script>
+if (platematcher=="true" && getCookie("biocodeUser")=="") {
+    alert('Must login before viewing this page.  Look in upper right-hand corner screen for login link.');
+}  else {
+document.write("<form method=get action='query_platematcher.html' name='platematcherform' onkeypress='return event.keyCode!=13;' >");
+
+if (platematcher =="true") {
+    document.write("<b>PlateMatcher</b>: Choose a plate to edit specimen data on.");
+    document.write("<input type=hidden name=platematcher value=true>");
+    document.write("<table border=0 cellpadding='2' cellspacing='2'> <tr> <td align=left width=130>Existing Plates</td> <td colspan=2 align=left>");
+} else {
+    document.write("<b>PlateViewer</b>: Choose a plate to view data for.");
+    document.write("<table border=0 cellpadding='2' cellspacing='2'> <tr> <td align=right Existing Plates</td> <td> </td> <td>");
+}
+
+// ***************************
+// Plates Field
+// ***************************
+var strVal=xmlhttpString("/cgi/biocode_ajax.cgi?option=plateList","POST");
+if (strVal==990) {
+    alert("trouble loading plates.  This may mean the server may have a severed internet connection.");
+}
+var arrPlates= strVal.split( "|" );
+plates = "<select name=batch id=batch>";
+for (i=0; i < arrPlates.length; i++) {
+    var arrLine=arrPlates[i].split(";");
+    plates += "<option value='"+arrLine[0]+"'";
+    if (format_name96==arrLine[0]) {
+        plates += " selected";
+    }
+    plates += ">"+arrLine[1];
+}
+
+plates += "</select>";
+document.write(plates);
+
+// ***************************
+// Load
+// ***************************
+if (platematcher =="true") {
+    document.write(" <input type='submit' name='submit' value='Load'> <small> Click 'Load' button to populate well below.</small>"); 
+}
+document.write("</td></tr>");
+
+// ***************************
+// Add a Plate
+// ***************************
+if (platematcher =="true") {
+    document.write("<tr> <td align=left width=130>Add a New Plate</td> <td colspan=2 align=left>");
+    document.write("<input type=text id='newTissueName_id' name='newTissueName'>");
+    document.write(" <input type='submit' name='submit' value='Add'>"); 
+    document.write("</td></tr>");
+
+    if (submit=='Add') {
+        document.getElementById('newTissueName_id').value=newTissueName;
+        addPlate();
+        format_name96=newTissueName;
+        batch=newTissueName;
+    }
+}
+
+
+// ***************************
+// Label Fields 
+// ***************************
+if (platematcher!="true") {
+    document.write("<tr><td align=right> Label 1</td><td></td><td><select name='field1'>"); 
+    //var arrFields = ['specimen_num_collector','bnhm_id','kingdom','phylum','subphylum','superclass','class','lowestTaxon','Host', 'Family','ScientificName'];
+
+	var arrFields = ['specimen_num_collector', 'DateFirstEntered', 'DateLastModified', 'EnteredBy', 'ProjectCode', 'OrigInstitution', 'AccessionNumber', 'ScientificName', 'ColloquialName', 'Kingdom', 'Phylum', 'Subphylum', 'Superclass', 'Class', 'Subclass', 'Infraclass', 'Superorder', 'Ordr', 'Suborder', 'Infraorder', 'Superfamily', 'Family', 'Subfamily', 'Tribe', 'Subtribe', 'Genus', 'Subgenus', 'SpecificEpithet', 'SubspecificEpithet', 'ScientificNameAuthor', 'MorphoSpecies_Match', 'MorphoSpecies_Description', 'LowestTaxon_Generated', 'IdentifiedBy', 'YearIdentified', 'MonthIdentified', 'DayIdentified', 'TypeStatus', 'SexCaste', 'LifeStage', 'Weight', 'WeightUnits', 'Length', 'LengthUnits', 'PreparationType', 'preservative', 'fixative', 'relaxant', 'IndividualCount', 'specimen_Habitat', 'specimen_MicroHabitat', 'Associated_Taxon', 'Cultivated', 'association_type', 'color', 'RelatedCatalogItem', 'DNASequenceNo', 'HoldingInstitution', 'Coll_EventID', 'bnhm_id'];
+
+    var fields="";
+    for(i=0; i<arrFields.length; i++) {
+         fields += "<option";
+        if (arrFields[i]==field1) {
+            fields += " selected";
+        }
+    fields += ">"+arrFields[i]+"</option>";
+    }
+    document.write(fields);                 
+    document.write(" </select> </td> </tr>");
+
+    // Label Field 2
+    document.write("<tr> <td align=right> Label 2</td> <td></td> <td> <select name='field2'>"); 
+    var fields="";
+    for(i=0; i<arrFields.length; i++) {
+        fields += "<option";
+        if (arrFields[i]==field2) {
+            fields += " selected";
+        }
+        fields += ">"+arrFields[i]+"</option>";
+    }
+    document.write(fields);                 
+    document.write("</select> </td> </tr>");
+
+    // Label Field 3
+    document.write("<tr> <td align=right> Label 3</td> <td></td> <td> <select name='field3'>"); 
+    var fields="";
+    for(i=0; i<arrFields.length; i++) {
+        fields += "<option";
+        if (arrFields[i]==field3) {
+            fields += " selected";
+        }
+        fields += ">"+arrFields[i]+"</option>";
+    }
+    document.write(fields);                 
+    document.write("</select> </td> </tr>");
+
+
+}
+
+// ***************************
+// Submit Button
+// ***************************
+if (platematcher=="true") {
+    //document.write("<tr><td align=left colspan=3><input type=button value='Save' name=submit onclick='plateMatcher();'> <i>Pressing save will save & update the well numbers for all spec_num_collector values in the form below.</i></td></tr>");
+} else {
+    document.write("<tr> <td><br></td> <td align=left colspan=2> <input type='submit' name='Search' value='Search'></td></tr>");
+}
+
+document.write("</table>");
+
+// ***************************
+// Plate specific information -- only display if plate has been chosen
+// ***************************
+if (unescape(format_name96)!="undefined") {
+
+    // ***************************
+    // Header Information (above well table)
+    // ***************************
+    strHeader="";
+    if (platematcher=="true") {
+        strHeader+="<br><b>Plate:</b> " +unescape(format_name96);
+    } else {
+        strHeader+="<br><b>Plate:</b> " +unescape(format_name96);
+		strHeader+=" <b>Label 1:</b> "+field1;
+		strHeader+=" <b>Label 2:</b>"+field2;
+		strHeader+=" <b>Label 3:</b>"+field3;
+		strHeader+=" <b>Extract ID:</b> <i>In italics if available</i>";
+    }
+    strHeader+="<br><b>SQL:</b> <small id=SQL></small>";
+    if (platematcher!="true") {
+        strDownloadURL="/cgi/biocode_fma_platematch?download=true&format_name96="+format_name96+"&field1="+field1+"&field2="+field2+"&field3="+field3;
+        strHeader+="<br><a href='"+strDownloadURL+"'>Download as Excel File</a>";
+
+        strLabDownloadURL="/cgi/biocode_fma_platematch?labdownload=true&format_name96="+format_name96+"&field1="+field1+"&field2="+field2+"&field3="+field3;
+        strHeader+="&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href='"+strLabDownloadURL+"'>Download Smithsonian LAB LIMS Format</a>";
+    }
+    document.write(strHeader);
+
+    // ***************************
+    // Plate
+    // ***************************
+    if (platematcher=="true") {
+        strURL="/cgi/biocode_fma_platematch?format_name96="+format_name96+"&platematcher=true";
+        strData= xmlhttpString(strURL,"GET");
+        document.write(buildWellTable("platematcher"));
+        populateData(strData,"platematcher");
+    } else {
+        strURL="/cgi/biocode_fma_platematch?format_name96="+format_name96+"&field1="+field1+"&field2="+field2+"&field3="+field3;
+        strData= xmlhttpString(strURL,"GET");
+        document.write(buildWellTable("plateviewer"));
+        populateData(strData,"plateviewer");
+    }
+
+    document.write("</form>");
+
+}
+
+}
+</script>
+
+
+</blockquote>
+
+<!--#include virtual="headers_footers/footer.html" -->

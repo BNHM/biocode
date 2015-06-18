@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Validate xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+         xsi:noNamespaceSchemaLocation="bioValidator.xsd">
+
+<Specimens>
+    <rule type="checkInXMLFields" name="EnteredBy">
+        <field>BSCIT Staff</field>
+        <field>John Deck</field>
+    </rule>
+
+    <rule type="RequiredColumns" name="RequiredColumns">
+        <field>Coll_EventID_collector</field>
+        <field>EnteredBy</field>
+        <field>Specimen_Num_Collector</field>
+        <field>Phylum</field>
+        <field>HoldingInstitution</field>
+    </rule>
+
+    <rule type="checkInXMLFields" name="LowestTaxonLevel">
+        <field>Kingdom</field>
+        <field>Phylum</field>
+        <field>Subphylum</field>
+        <field>Superclass</field>
+        <field>Class</field>
+        <field>Subclass</field>
+        <field>Infraclass</field>
+        <field>Superorder</field>
+        <field>Ordr</field>
+        <field>Suborder</field>
+        <field>Infraorder</field>
+        <field>Superfamily</field>
+        <field>Family</field>
+        <field>Subfamily</field>
+        <field>Tribe</field>
+        <field>Subtribe</field>
+        <field>Genus</field>
+        <field>Genus_and_Species</field>
+        <field>Subgenus</field>
+        <field>SpecificEpithet</field>
+        <field>SubspecificEpithet</field>
+    </rule>
+
+    <rule type="checkInXMLFields" name="HoldingInstitution">
+        <field>Museum of Vertebrate Zoology</field>
+        <field>Florida Museum of Natural History</field>
+        <field>Smithsonian Institution</field>
+    </rule>
+
+    <rule type="checkInXMLFields" name="Phylum">
+        <field>Chordata</field>
+        <field>Arthropoda</field>
+        <field>Mollusca</field>
+        <field>Porifera</field>
+        <field>Bryozoa</field>
+        <field>Cnidaria</field>
+        <field>Echinodermata</field>
+        <field>Annelida</field>
+        <field>Platyhelminthes</field>
+        <field>Hemichordata</field>
+        <field>Sipuncula</field>
+        <field>Nemertea</field>
+        <field>Tracheophyta</field>
+        <field>Chaetognatha</field>
+        <field>Pectinidae</field>
+        <field>Granuloreticulosa</field>
+        <field>Chlorophyta</field>
+        <field>Rhodophyta</field>
+        <field>Phaeophyta</field>
+        <field>Magnoliophyta</field>
+        <field>Anthophyta</field>
+        <field>Protista</field>
+        <field>Ctenophora</field>
+        <field>Nematoda</field>
+    </rule>
+
+    <rule type="uniqueValue" name="Specimen_Num_Collector"></rule>
+
+    <rule type="checkMatchingFieldNameInSecondarySheet" name="Coll_EventID_collector"></rule>
+
+    <rule type="checkLowestTaxonLevel" name=""></rule>
+
+    <rule type="checkTissueColumns" name=""></rule>
+
+</Specimens>
+
+<Collecting_Events>
+
+    <rule type="checkInXMLFields" name="EnteredBy,Collector,Collector2,Collector3,Collector4,Collector5,Collector6,Collector7,Collector8">
+        <field>BSCIT Staff</field>
+        <field>John Deck</field>
+    </rule>
+
+    <rule type="RequiredColumns" name="RequiredColumns">
+        <field>Coll_EventID_collector</field>
+        <field>EnteredBy</field>
+        <field>Country</field>
+        <field>YearCollected</field>
+        <field>MonthCollected</field>
+    </rule>
+
+    <rule type="DwCLatLngChecker" 
+		decimalLatitude="DecimalLatitude" 
+		decimalLongitude="DecimalLongitude"
+    	maxErrorInMeters="MaxErrorInMeters"
+    	horizontalDatum="HorizontalDatum"></rule>
+
+    <rule type="DwCLatLngChecker" 
+	decimalLatitude="DecimalLatitude2" 
+	decimalLongitude="DecimalLongitude2"></rule>
+
+    <rule type="uniqueValue" name="Coll_EventID_collector"></rule>
+
+    <rule type="BoundingBox" 
+	name="Moorea"
+	decimalLatitude="DecimalLatitude"
+	decimalLongitude="DecimalLongitude">
+         <field>BOX3D(-18.5 -150.8,-16.7 -148.4)</field>
+    </rule>
+
+    <rule type="BoundingBox" 
+	name="Moorea"
+	decimalLatitude="DecimalLatitude2"
+	decimalLongitude="DecimalLongitude2">
+         <field>BOX3D(-18.5 -150.8,-16.7 -148.4)</field>
+    </rule>
+
+    <rule type="checkInXMLFields" name="HorizontalDatum">
+         <field>WGS1984</field>
+         <field>NAD1927</field>
+         <field>NAD1983</field>
+         <field>unknown</field>
+    </rule>
+
+    <rule type="isNumber" name="MinElevationMeters"></rule>
+
+    <rule type="isNumber" name="MaxElevationMeters"></rule>
+
+    <rule type="isNumber" name="MinDepthMeters"></rule>
+
+    <rule type="isNumber" name="MaxDepthMeters"></rule>
+
+    <rule type="isNumber" name="MaxErrorInMeters"></rule>
+
+    <rule type="isNumber" name="DepthOfBottomMeters"></rule>
+
+    <rule type="isNumber" name="DepthErrorMeters"></rule>
+
+    <rule type="validYearMonthDay" name="YearCollected,MonthCollected,DayCollected"></rule>
+
+    <rule type="validYearMonthDay" name="YearIdentified,MonthIdentified,DayIdentified"></rule>
+
+</Collecting_Events>
+
+</Validate>

@@ -1,0 +1,85 @@
+<!--#include virtual="headers_footers/title.html" -->
+    Update a Tissue Record
+<!--#include virtual="headers_footers/head1.html" -->
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg height=70 border=0></a>
+</td>
+<td>
+<big><big>
+ Biocode: Update a Tissue Record
+
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png height=70 border=0></a>
+</td>
+</tr>
+</table>
+
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+<blockquote>
+       <center>
+       <small>
+       <i>
+       Back to: <a href=http://biocode.berkeley.edu/>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <p>
+
+<FORM ACTION="/cgi/biocode_add_tissue" METHOD="post">
+<INPUT type=hidden name=table value=biocode>
+<INPUT type=hidden name=mode value=update>
+<table>
+<tr>
+<th>Your Name</th>
+<td><select name=entry_by>
+<option selected>
+<!--#include virtual="select_lists/submitters.txt" -->
+</select>
+&nbsp;&nbsp;<small><a href=people_add_upd.html>add a new name</a></small>
+</td>
+</tr>
+
+
+<tr>
+<th>Password</th>
+<td><INPUT type=password name=password></td>
+</tr>
+</table>
+<table>
+<tr>
+<th>Biocode Specimen ID # </th>
+<td align=center><INPUT size=10 name=bnhm_id><br><small><i>MBIO234</i></small>
+</td>
+<th>Tissue # </th>
+<td align=center><INPUT size=2 name=tissue_num><br><small><i>2</i></small>
+</td>
+</tr>
+
+<tr>
+<th align=left valign=top colspan=2><br><p>
+<INPUT TYPE="submit" VALUE="Next">
+
+</th>
+</tr>
+
+
+</table>
+</form>
+
+</blockquote>
+
+<!--#include virtual="headers_footers/footer.html" -->
+
+
+
+

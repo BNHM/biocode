@@ -1,0 +1,67 @@
+#!/usr/bin/perl
+
+# biocode_img_query ... June 2010
+
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p"; 
+require "mybiocode_utils.p";
+require "myimg_utils.p";
+
+## uncomment for system crashes
+# $CRASH = 1;  ## queries will just exit out of readParse
+$crash_date = "Fri Oct  8 10:15:08 PDT 2004";
+
+$tmp_dir =  "$tmp_file_location/biocode_query";
+### begin
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+$selectlist = "*";
+$table = "img";
+$script_name = "biocode_img_query";
+$tmp_file_dir = "/data1/tmp";
+$heading = "Moorea Biocode Collections";
+
+# $DEBUG = 1;
+ print "Content-type: text/html\n\n";
+
+
+###### START ###################
+
+if ($input{"kwid"}) { # print enlargement
+     &print_thumb($input{"kwid"});
+} 
+
+###### END ###################
+
+sub print_thumb {
+
+    my ($kwid) = @_;
+
+    @row = &get_one_record("select * from img where kwid='$kwid'", "image");
+
+#    if ($row[0] > 0) {
+#        &fill_fields_with_values("img");
+#    } else {
+#        &print_default_header("Moorea Biocode Photos");
+#        print "<h3>Sorry, photo ID $kwid is not in our database.  Please try again!<br>\n";
+#        print "<a href=/>Click here</a> to start a new query</h3>\n";
+#        &print_calphotos_footer;
+#        return;
+#    }
+
+
+    $path = &get_path_from_kwid($kwid);
+
+    $blowup_url = "http://biocode.berkeley.edu/imgs/512x768/$path\n";
+    $thumb_url = "http://biocode.berkeley.edu/imgs/128x192/$path\n";
+
+    chomp($blowup_url);
+    chomp($thumb_url);
+
+    print "<a href=$blowup_url><img src=$thumb_url title=\"$kwid\" border=0></a>";
+}
+
+

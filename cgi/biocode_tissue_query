@@ -1,0 +1,487 @@
+#!/usr/bin/perl
+
+# biocode_tissue_query March 2006
+# /cgi/biocode_tissue_query?seq_num=6&one=T
+# /cgi/biocode_tissue_query?name_full="$name_full"&one=T
+
+# $DEBUG = 1;
+
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p";
+require "mybiocode_utils.p";
+
+$download_on = 1;    # turn this on to enable download of results
+
+$selectlist = " biocode_tissue.bnhm_id, biocode_tissue.tissue_num, biocode.Specimen_Num_Collector, biocode_tissue.HoldingInstitution, biocode_tissue.year, biocode_tissue.month, biocode_tissue.day, biocode_tissue.person_subsampling, biocode_tissue.container, biocode_tissue.preservative, biocode_tissue.tissuetype, biocode_tissue.format_name96, biocode_tissue.well_number96, biocode_tissue.batch_id, biocode.Family, biocode.ScientificName ";
+
+$max_rows = 100;
+$latlong = 0;
+$orig_in = $ENV{'QUERY_STRING'};
+$biocode_url = "http://biocode.berkeley.edu/";
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+$table = "biocode_tissue";
+$script_name = "biocode_tissue_query";
+$heading = "Moorea Biocode Tissue Database";
+
+if (!$max) {
+    $max = 100;
+}
+
+if ($input{"download"}) {   
+    $displaylist = $input{'displaylist'};
+    &download_biocode_tissue ($input{"download"});
+					   
+} elsif ($input{"one"} eq "T") {
+    &one_record_query;
+    if ($bad_args_for_one_record_query) {
+	#&print_biocode_header($heading);
+	&print_biocode_header_css($heading);
+	print "<p><h3>Sorry, I don't understand that query.  Please try again</h3>";
+	&print_biocode_footer;
+	return;
+    } else {
+	&print_detail;
+    }
+
+
+} elsif ($input{"tmpfile"} eq "") {   # this is not a next or prev page
+    
+    ## make sure we have a selectlist
+    if (!$selectlist) {
+	$selectlist = "*";
+    }
+    if ($DEBUG) {
+	$debug_msg .= "<h4>biocode_tissue_query</h4> calling build_query.";
+	$debug_msg .= "  selectlist: $selectlist<p>";
+    }
+    &build_query;  # myquery_utils.p
+    &do_regular_query;
+    
+
+} elsif ($input{"tmpfile"} ne "") {  # next or prev page
+    &use_tmp_file;
+}
+
+&make_log_entry("biocode_tissue",$whereclause,$special);
+
+### end
+
+
+sub do_regular_query {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In do_regular_query</h4>";}    
+
+    &print_biocode_header_css($heading);
+
+    if (!$whereclause || $whereclause !~ /^WHERE/) {
+	$whereclause = "nothing selected";
+	$num_matches = 0;
+	print "<p><h3>Error: Please go back and select at least one field to query on.</h3>"; 
+	if ($DEBUG) {
+	    print "<p>DEBUG_MSG<p>$debug_msg;";
+	}
+	&print_biocode_footer;
+	return;
+ 
+    }
+
+    # order by CatalogNumberNumeric (which is part of bnhm_id) & tissue_num ...
+    if($query =~ /ORDER BY CatalogNumberNumeric/i) {
+        $query =~ s/ORDER BY CatalogNumberNumeric/ORDER BY cast(replace(biocode_tissue.bnhm_id,'MBIO','') as signed),biocode_tissue.tissue_num/g;
+    }
+
+    # print "<p>QUERY: $query<p>";
+    $tmp = &get_multiple_records($query,"biocode");  # query_utils.p
+
+    if ($DEBUG) {$debug_msg .= "made tmp file tmp=$tmp ...\n";}
+
+    if ($DEBUG) {$debug_msg .=  "calling check_max ...\n";}
+    &check_max;  # query_utils.p
+    if ($default_max) {
+	$max_rows = 59;
+    }    
+    if ($num_matches eq 0) {
+	print "<h4>Sorry - no matches. Please try again.</h4>";
+        print "<small><b>Query:</b> $query</small><br>\n";
+	if ($DEBUG) {
+            print "<p>DEBUG_MSG<p>$debug_msg;";
+        }
+	&print_biocode_footer;
+	return;    
+    }
+    $query_results = $tmp;
+    if ($DEBUG) {$debug_msg .=  "calling print_multiple_records ...\n";}
+    if ($DEBUG) {$debug_msg .=  "<br>query_results: $query_results";}
+    if ($input{'advanced'} eq "T") {
+	&print_advanced_records;
+    } else {
+	&print_multiple_records;
+    }
+}
+
+
+
+sub use_tmp_file {
+
+    if ($DEBUG) {$debug_msg .= "<p>In use_tmp_file<p>\n";}
+
+    $whereclause = $input{'prevwhere'};
+    #&print_biocode_header($heading);
+    &print_biocode_header_css($heading);
+
+    &check_max; # query_utils.p
+    $query_results = "$tmp_file_location/biocode_tissue_query/$input{'tmpfile'}";
+
+    if ($DEBUG) {$debug_msg .=  "<h4>query_results: $query_results</h4>>\n";}
+    if ($input{'button_flag'} eq "ADVANCED") {
+	&print_advanced_records;
+    } else {
+	&print_multiple_records;
+    }
+}
+
+
+sub print_multiple_records {
+    
+    $some_pics=0;
+    if ($DEBUG) {$debug_msg .= "<h4>In print_multiple_records</h4>";}
+    &print_table_cells;
+
+    print "</table>\n";
+    if ($some_pics) {
+	print "<big>*</big> photo available<p>\n";
+    }
+    if ($DEBUG) {
+	print "<p>DEBUG_MSG<p>$debug_msg;";
+    }
+    &print_biocode_footer;
+
+}
+    
+
+sub print_table_cells {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In print_table_cells<h4>";}
+
+    $searchstring = $whereclause;
+    $searchstring =~ s/WHERE//g;
+
+    ## stuff for download button
+    $dwhere = &strip($searchstring);
+    $dwhere =~ s/ /\+/g;
+
+    if ($download_on) {
+	$filesize = sprintf("%.1f",(-s $query_results) / 1000);
+	print "<p><a href=\"/cgi/biocode_tissue_query?download=$query_results";
+	print "&num=$num_matches&where=$dwhere\">Download your results</a> ";
+	print " (tab-delimited text file, $num_matches lines, file size = $filesize K)<p>";
+    }
+    $query = "select from biocode_tissue $whereclause";
+    print "<p><small><b>Query:</b> $query</small><br><p>\n";
+    
+    print "<p><small><i>Click on Tissue # to see ";
+    print "the full record</i></small><br>\n";
+    print "<table border>";
+    print "<TR>";
+    print "<th><small>Specimen No.</th>\n";
+    print "<th><small>Tissue ID #</th>\n";
+    print "<th><small>Type<br></th>\n";
+    print "<th><small>Institution<br></th>\n";
+    print "<th><small>Family<br></th>\n";
+    print "<th><small>Taxon<br></th>\n";
+    print "<th><small>Date Taken<br></th>\n";
+    print "<th><small>By Whom<br></th>\n";
+    print "<th><small>Container<br></th>\n";
+    print "<th><small>Preservative<br></th>\n";
+    print "<th><small>96 Format Name<br></th>\n";
+    print "<th><small>96 Well Number<br></th>\n";
+
+
+    open(FH, "$query_results") || die "Can't open tmp file for reading";
+    local($count) = 0;
+
+    while(<FH>) {
+	
+        if(($count < ($row_to_start + $max_rows)) && ($count >= $row_to_start)) {
+
+            @row = split(/\t/,$_);
+	    &fill_fields_with_values("biocode_tissue_display");
+	    $tid = $bnhm_id . "." . $tissue_num;
+
+#            # ugh. This is probably not the most efficient way to do it ... works for now. 4/19/06
+#            $s = "select family, ScientificName from biocode where bnhm_id = '$bnhm_id'";
+#            ($family,$taxon) = &get_one_record($s,"biocode");
+
+            print "<tr>";
+	    print "<td>$Specimen_Num_Collector<br></td>\n";
+	    print "<td align=left><a href=/cgi/biocode_tissue_query?one=T&bnhm_id=$bnhm_id&tissue_num=$tissue_num>";
+	    print "$tid</a><br></td>\n";
+	    print "<td>$tissuetype<br></td>\n";
+	    print "<td>$HoldingInstitution<br></td>\n";
+	    print "<td>$Family<br></td>\n";
+	    print "<td>$ScientificName<br></td>\n";
+	    print "<td>$day $mo_nums_1{$month} $year<br></td>\n";
+	    print "<td>$person_subsampling<br></td>\n";
+	    print "<td>$container<br></td>\n";
+	    print "<td>$preservative<br></td>\n";
+	    print "<td>$format_name96<br></td>\n";
+	    print "<td>$well_number96<br></td>\n";
+	}
+
+	print "</tr>";
+        $count++;
+    }
+    close(FH);
+}
+
+
+sub one_record_query {
+
+    ## query biocode table
+
+    if ($DEBUG) {$debug_msg .= "<h4>In one_record_query</h4><p>\n";}
+    $debug_msg .= "input: $input<p>\n";
+
+    if ($input{bnhm_id} && $input{tissue_num}) {
+	$whereclause = "WHERE bnhm_id = '$input{bnhm_id}' and tissue_num=$input{tissue_num}";
+
+    ## from the prelim results page
+    } elsif ($input{'tid'}) {
+		($bnhm_id,$tissue_num) = split(/\./,$input{'tid'});
+		$whereclause = "WHERE bnhm_id = '$bnhm_id' and tissue_num=$tissue_num";
+    } elsif ($input{'seq_num'}) {
+		$whereclause = "WHERE seq_num='$input{seq_num}'";
+
+    } else {
+	$bad_args_for_one_record_query = 1;
+        return;
+    }
+
+    $query = "select * from biocode_tissue $whereclause";
+    if ($DEBUG) {$debug_msg .= "query: $query<p>\n";}
+
+    @row = &get_one_record($query,"biocode");
+
+    local($count) = 0;
+    foreach $attr (@biocode_tissue_schema) {
+        $val{$attr} = $row[$count];
+        $count++;
+    }
+
+}
+
+sub print_detail {
+    
+    if ($DEBUG) {$debug_msg .= "<h4>In print_detail<\h4>\n";}
+    &clear_all_fields("biocode_tissue");
+    &fill_fields_with_values("biocode_tissue");
+    foreach $f (@biocode_tissue_schema) {
+#	${$f} =~ s/NULL//g;
+    }
+
+    $num_tissues = &get_count("biocode_tissue","bnhm_id='$bnhm_id'");
+
+    local($page_heading) = $heading . ": $name_full"; 
+    &print_biocode_header_css($heading);
+    
+    $tid = $bnhm_id . "." . $tissue_num;
+    
+
+    print "<br>\n";
+
+    print "<table cellspacing=5>";
+    print "<tr><td align=right><b>Tissue ID \#</td>\n";
+    print "<td>$tid</td>\n";
+    print "</tr>";
+
+    print "<tr><td align=right><b>Biocode ID \#</td>\n";
+    print "<td><a href=/cgi/biocode_query?bnhm_id=$bnhm_id&one=T>$bnhm_id</a>";
+    print "</td>\n";
+    print "</tr>";
+    
+    print "<tr><td align=right><b>Institution</td>\n";
+    print "<td>$HoldingInstitution</td>\n";
+    print "</tr>";
+
+    print "<tr><td align=right><b>Sampled by</td>\n";
+    print "<td>$person_subsampling</td>\n";
+    print "</tr>";
+
+    print "<tr><td align=right><b>Date</td>\n";
+    print "<td>$day $mo_nums_1{$month} $year<br></td>\n";
+    print "</tr>";
+
+    if($from_tissue) {
+        print "<tr><td align=right><b>Tissue Source</td>\n";
+        print "<td>$from_tissue<br></td>\n";
+        print "</tr>";
+
+        if($from_tissue =~ /\./) {
+            $from_tissue_bnhm_id = $`;
+            $from_tissue_tissue_num = $';
+        }
+        $query = "select tissuetype from biocode_tissue where bnhm_id = '$from_tissue_bnhm_id' ";
+        $query .= " and tissue_num = $from_tissue_tissue_num";
+        ($tissuetype) = &get_one_record($query,"biocode");
+    }
+
+    print "<tr><td><br></td><td><br></td></tr>";
+
+    print "<tr><td align=right><b>Tissue Type</td>\n";
+    print "<td>$tissuetype</td>\n";
+    print "</tr>";
+
+    print "<tr><td align=right><b>Container</td>\n";
+    print "<td>$container</td>\n";
+    print "</tr>";
+    
+    print "<tr><td align=right><b>Preservative</td>\n";
+    print "<td>$preservative</td>\n";
+    print "</tr>";
+
+    print "<tr><td align=right><b>96 Format Name</td>\n";
+    print "<td>$format_name96\n";
+    if($format_name96) {
+        print "&nbsp;&nbsp;&nbsp;&nbsp;";
+        print "[View tissue in ";
+        print "<a href=http://biocode.berkeley.edu/query_platematcher.html?batch=$format_name96&field1=specimen_num_collector&field2=ScientificName&field3=Phylum&Search=Search>";
+        print "PlateViewer</a>]\n";
+        print "&nbsp;&nbsp;&nbsp;&nbsp;";
+        print "[Edit tissue with ";
+        print "<a href=http://biocode.berkeley.edu/query_platematcher.html?platematcher=true&batch=$format_name96&submit=Load&newTissueName=>";
+        print "PlateMatcher</a>]\n";
+    }
+    print "</td>";
+    print "</tr>";
+
+    print "<tr><td align=right><b>96 Well Number</td>\n";
+    print "<td>$well_number96</td>\n";
+    print "</tr>";
+
+    print "<tr><td align=right><b>Molecular ID</td>\n";
+    print "<td>$molecular_id</td>\n";
+    print "</tr>";
+
+    print "<tr><td align=right><b>Tissue Barcode</td>\n";
+    print "<td>$tissue_barcode</td>\n";
+    print "</tr>";
+
+    print "<tr><td valign=top align=right><b>Notes</td>\n";
+    print "<td>$notes</td>\n";
+    print "</tr>";
+
+    print "<tr><td><br></td><td><br></td></tr>";
+
+    print "<tr><td colspan=2>";
+    print "<a href=/cgi/biocode_tissue_query?table=biocode_tissue&jointables=biocode,biocode_tissue&joincolumns=biocode.bnhm_id+=+biocode_tissue.bnhm_id&where-biocode_tissue.bnhm_id=$bnhm_id>";
+    print "View all $num_tissues tissue samples</a> from specimen $bnhm_id\n";
+    print "</td>\n";
+    print "</tr>";
+    print "<tr><td>";
+        if($batch_id) {
+        print "<br><small><i>Batch ID: $batch_id</i></small>\n";
+    }
+
+    print "</td><td><br></td></tr>";
+
+    print "<tr><td><br></td><td><br></td></tr>";
+
+    print "</table>";
+
+   # print "<table>";
+   # foreach $f (@biocode_tissue_schema) {
+   #      print "<tr><td align=right><b>$f</b></td><td>${$f}<br></td></tr>\n";    
+   # }
+   # print "</table>";
+
+    &print_update_link;
+    &print_biocode_footer;
+    
+}
+
+
+sub download_biocode_tissue {
+    local($filename) = @_;
+    local($fields) = "";
+
+    #$fields = $displaylist;
+    $fields = &get_full_selectlist;
+    $fields =~ s/\,/\t/g;
+    $fields .= "\n";
+    
+    print "Content-type: text/text\n\n";
+
+    print "$fields\n\n";
+
+    open(FH, "$tmp_file_location/$script_name/$filename")
+        || die "Can't open '$filename' file for reading";
+    while(<FH>) {
+	print "$_";
+    }
+}
+
+
+sub get_full_selectlist {
+    $selectlist = "";
+    foreach $e (@biocode_tissue_display_schema) {
+        $selectlist .= "$e,";
+    }
+    $selectlist =~ s/,$//g;
+    $selectlist .= "\tCatalogNumberNumeric";
+    return $selectlist;
+}
+
+
+sub print_update_link {
+
+    
+    print "<table width=100% border>\n";
+    print "<tr>\n";
+    print "<td align=center>\n";
+    print "<small><nobr>";
+
+    if ($tissue_num != 1) {
+	$prev_tn = $tissue_num -1;
+	$prev_id = $bnhm_id . "." . $prev_tn;
+	print "<a href=/cgi/biocode_tissue_query?bnhm_id=$bnhm_id&tissue_num=$prev_tn&one=T>";
+	print "<<&nbsp;Prev&nbsp;[$prev_id]</a>\n";
+	print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    }
+    if ($tissue_num < $num_tissues) {
+	$next_tn = $tissue_num + 1;
+	$next_id = $bnhm_id . "." . $next_tn;
+	print "<a href=/cgi/biocode_tissue_query?bnhm_id=$bnhm_id&tissue_num=$next_tn&one=T>";
+        print "&nbsp;Next&nbsp;[$next_id]&nbsp;>></a>\n";
+    }
+
+    print "</nobr></td>\n";
+
+    print "<td align=left>\n";
+    print "<FORM ACTION=\"/cgi/biocode_add_tissue\" METHOD=post>\n";
+    print "<INPUT type=hidden name=special value=firstscreen>\n";
+    print "<input type=hidden name=mode value=update>\n";
+    print "<input type=hidden name=bnhm_id value=\"$bnhm_id\">\n";
+    print "<input type=hidden name=tissue_num value=\"$tissue_num\">\n";
+    print "<small>Correct this tissue record [$tid] ... ";
+    print "<br>Name:&nbsp;\n";
+    print "<select size=1 name=entry_by>\n";
+    print "<option selected>\n";
+    $submitter_list = "$select_list_path/submitters.txt";
+    open (S,$submitter_list);
+    while ($line = <S>) {
+	print $line;
+    }
+    close(S);
+    print "</select>\n";
+    print "Pswd:&nbsp;\n";
+    print "<input size=5 name=password type=password>\n";
+    print "<input type=submit value=go>\n";
+    print "</small></td></tr>\n";
+    print "</table>\n";
+
+}
+

@@ -1,0 +1,15 @@
+#!/usr/bin/perl
+use CGI::Session;
+use CGI;
+
+$query = new CGI;
+print $query->header;
+
+# Grab the SessionID using the cookie stored on browser
+$cookieSessionID = $query->cookie("id");
+# Create session object (this is session information on server)
+$session = new CGI::Session("driver:File",$cookieSessionID,{'Directory'=>"/tmp"}) or die "$!";
+# Grab user name from server session
+$user= $session->param('user');
+# Use the information
+print "Example of a CGI script that prints the user information by looking at the Server Side Session Variable.  User logged in (with privileges) =  <b>".$user."</b>";

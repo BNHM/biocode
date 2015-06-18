@@ -1,0 +1,819 @@
+#!/usr/bin/perl
+
+# biocode_label Jan 2006  
+
+
+# $DEBUG = 1;
+$CRASH = 0;
+$crash_date = "Thu Apr 28 22:33:59 PDT 2005";
+
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p"; 
+require "mybiocode_utils.p";
+
+if ($CRASH) {
+    print "Content-type: text/html\n\n";
+    print "<h3>Sorry, our database is temporarily offline ";
+    print "while update the data.</h3>";
+    print "Please try again in an hour .";
+    print "<p>This message was last updated <b>$crash_date</b><p>";
+    exit;
+}
+
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+$tmp_dir = "$tmp_file_location/unknown_query";
+
+$numcolumns = $input{numcolumns};
+$fontsize = $input{fontsize};
+$lines = $input{lines};
+
+if($input{labeltype} eq "locality_collector_ecology") {
+    &get_collecting_event_info($input{EventID});
+    $num_locality_labels = $input{num_locality_labels};
+    $num_collector_labels = $input{num_collector_labels};
+    $num_ecology_labels = $input{num_ecology_labels};
+    $dateformat = $input{dateformat};
+    $latlongformat = $input{latlongformat};
+
+    if($row[0]) {
+        &get_labels;
+        &print_label_page($fontsize,$numcolumns);
+    } else {
+        print "Content-type: text/html\n\n";
+        print "bad collecting event id :(";
+    }
+} elsif($input{labeltype} eq "identification") {
+    $project_code = $input{project_code};
+    &print_identification_labels;
+} elsif($input{labeltype} eq "specimen_num") {
+    $project_for_label = $input{project_for_label};
+    &print_specimen_labels;
+}
+
+
+
+sub get_collecting_event_info {
+    my ($EventID) = @_;
+
+    $query = "select * from biocode_collecting_event where EventID = $EventID";
+    @row = &get_one_record("$query");
+    &fill_fields_with_values("biocode_collecting_event");
+
+}
+
+sub print_label_page {
+
+    my ($fontsize,$numcolumns) = @_;
+
+    my $count = 0;
+    my $column_count = 0;
+
+    &print_headers_and_css($fontsize,$lines);
+
+#print "&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>\n";
+#print "&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>\n";
+#print "&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>\n";
+#print "&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>&nbsp;<p>\n";
+
+    if($warning) {
+        print "$warning";
+    }
+
+    print "<table>\n";
+
+    if($input{num_locality_labels}) {
+        while($count < $num_locality_labels) {
+            print "<tr>";
+            while($column_count < $numcolumns) {
+                $column_count++;
+                print "<td>";
+                print "$locality_label";
+                print "</td>";
+            }
+            $column_count = 0;
+            print "</tr>";
+            $count = $count + $numcolumns;
+        }
+    }
+
+    $column_count = 0;
+    $count = 0;
+    if($input{num_collector_labels}) {
+        while($count < $num_collector_labels) {
+            print "<tr>";
+            while($column_count < $numcolumns) {
+                $column_count++;
+                print "<td>";
+                print "$collector_label";
+                print "</td>";
+            }
+            $column_count = 0;
+            print "</tr>";
+            $count = $count + $numcolumns;
+        }
+    }
+
+    $column_count = 0;
+    $count = 0;
+    if($input{num_ecology_labels}) {
+        while($count < $num_ecology_labels) {
+            print "<tr>";
+            while($column_count < $numcolumns) {
+                $column_count++;
+                print "<td>";
+                print "$ecology_label";
+                print "</td>";
+            }
+            $column_count = 0;
+            print "</tr>";
+            $count = $count + $numcolumns;
+        }
+    }
+
+}
+
+
+
+sub get_labels {
+
+    if($input{num_locality_labels}) {
+        &format_biocode_locality_label;
+    }
+    if($input{num_collector_labels}) {
+        &format_biocode_collector_label;
+    }
+    if($input{num_ecology_labels}) {
+        &format_biocode_ecology_label;
+    }
+
+}
+
+
+
+sub print_headers_and_css {
+
+    my ($fontsize,$lines) = @_;
+
+    print "Content-type: text/html\n\n";
+
+    print "<html>\n";
+    print "<head>\n";
+    print "<title>\n";
+    print "Moorea Biocode Species Database Query\n";
+    print "Moorea Biocode Collections\n";
+    print "</title>\n";
+
+    print "<style type=\"text/css\">\n";
+
+    print "body, table, tr, td, p  { \n";
+    print "   /* margin: 0px 0px 0px 0px; \n";
+    print "   padding: 0px 0px 0px 0px; */ \n";
+#    print "   font-family: arial, helvetica, verdana, sans-serif; \n";
+    print "   font-family: serif; \n";
+    print "   font-size: $fontsize"."px; \n";
+    print "   color: #000; \n";
+    print "} \n";
+
+    if($lines eq "yes") {
+        print "table { \n";
+        print "      border-collapse: collapse;\n";
+        print "}\n";
+
+        print "td { \n";
+        print "      border-style: solid;\n";
+        print "      border-width: 1px;\n";
+        print "      padding: 2px;\n";
+        print "}\n";
+    }
+
+
+    print "</style>\n";
+
+    print "</head>\n";
+
+    print "<body bgcolor=white>\n";
+
+}
+
+
+sub format_biocode_locality_label {
+
+    &get_biocode_elevation;
+    &get_biocode_latlong;
+    &get_biocode_depth;
+    &get_biocode_country;
+    &get_biocode_date;
+    &get_biocode_stateprovince;
+    &get_biocode_county;
+    &get_biocode_islandgroup;
+    &get_biocode_island;
+
+    $Locality = &strip($Locality);
+    $Locality =~ s/,(\w)/, $1/g;
+    @loc = split(/\s+/,$Locality);
+
+    $TOTAL_NUM_LOCALITY_WORDS = $#loc + 1;
+    $TOTAL_NUM_LOCALITY_WORDS_PRINTED = 0;
+
+    $latlong = &strip($latlong);
+    $elevation = &strip($elevation);
+    $depth = &strip($depth);
+    $date = &strip($date);
+    $higher_geog = $country.$state_prov.$county.$islandgroup.$island;
+
+    $length_higher_geog = length($higher_geog);
+    $length_locality = length($Locality);
+    $length_latlong = length($latlong);
+    $length_elevation = length($elevation);
+    $length_depth = length($depth);
+    $length_date = length($date);
+
+
+
+    # For debugging (will print whole label on one line at top of label page):
+    # $warning = $country.$state_prov.$county.$islandgroup.$island;
+    # $warning .= " $Locality ";
+    # $warning .= "$latlong $elevation $depth ";
+    # $warning .= "$date";
+
+    #####################################################################
+    ### Begin line 1 of locality label
+    ###
+
+    $locality_label  = $higher_geog;
+    $CURRENT_LINE_LENGTH = $length_higher_geog;               # LINE LENGTH, starting with first line
+
+    if($CURRENT_LINE_LENGTH < 20) {
+        foreach $l (@loc) {
+            $CURRENT_LOCALITY_WORD_LENGTH = length($l); # was len_loc
+            if(($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) <= 27) {
+                if($TOTAL_NUM_LOCALITY_WORDS_PRINTED == 0 && $CURRENT_LINE_LENGTH) {
+                    $locality_label .= ": ";
+                }
+                $locality_label .= " $l";
+                $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH + 2; # add chars for : + space
+                $TOTAL_NUM_LOCALITY_WORDS_PRINTED++;
+            } else {
+                $locality_label .= "<br>";
+                $CURRENT_LINE_LENGTH = 0;
+                last;
+            }
+        }
+    } else {
+        $locality_label .= "<br>";
+        $CURRENT_LINE_LENGTH = 0;
+    }
+
+    #####################################################################
+    ### Begin line 2 of locality label, only Locality words (if any)
+    ###
+
+    $NUM_LOCALITY_WORDS_PRINTED_ON_PREV_LINES = $TOTAL_NUM_LOCALITY_WORDS_PRINTED;
+
+    if($TOTAL_NUM_LOCALITY_WORDS_PRINTED < $TOTAL_NUM_LOCALITY_WORDS) {
+        $count = 0;
+        foreach $l (@loc) {
+            $CURRENT_LOCALITY_WORD_LENGTH = length($l);
+            if($count >= $TOTAL_NUM_LOCALITY_WORDS_PRINTED
+                && (($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) <= 25)) {
+                $locality_label .= " $l";
+                $count++;
+                $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH;    # LINE LENGTH
+                $TOTAL_NUM_LOCALITY_WORDS_PRINTED++;
+            } elsif(($NUM_LOCALITY_WORDS_PRINTED_ON_PREV_LINES < $TOTAL_NUM_LOCALITY_WORDS)
+                && (($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) <= 25)) {
+                $count++;
+            } elsif(($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) > 25) {
+                $CURRENT_LINE_LENGTH = 0;
+                $locality_label .= "<br>";
+                last;
+            }
+        }
+    }
+
+    #####################################################################
+    ### Begin line 3 of locality label, only Locality words (if any)
+    ###
+
+    $NUM_LOCALITY_WORDS_PRINTED_ON_PREV_LINES = $TOTAL_NUM_LOCALITY_WORDS_PRINTED;
+
+    if($TOTAL_NUM_LOCALITY_WORDS_PRINTED < $TOTAL_NUM_LOCALITY_WORDS) {
+        $count = 0;
+        foreach $l (@loc) {
+            $CURRENT_LOCALITY_WORD_LENGTH = length($l);
+            if($count >= $TOTAL_NUM_LOCALITY_WORDS_PRINTED
+                && (($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) <= 25)) {
+                $locality_label .= " $l";
+                $count++;
+                $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH;    # LINE LENGTH
+                $TOTAL_NUM_LOCALITY_WORDS_PRINTED++;
+            } elsif(($NUM_LOCALITY_WORDS_PRINTED_ON_PREV_LINES < $TOTAL_NUM_LOCALITY_WORDS)
+                && (($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) <= 25)) {
+                $count++;
+            } elsif(($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) > 25) {
+                $CURRENT_LINE_LENGTH = 0;
+                $locality_label .= "<br>";
+                last;
+            }
+        }
+    }
+
+    #####################################################################
+    ### Begin line 4 of locality label, only Locality words (if any)
+    ###
+
+    $NUM_LOCALITY_WORDS_PRINTED_ON_PREV_LINES = $TOTAL_NUM_LOCALITY_WORDS_PRINTED;
+
+    if($TOTAL_NUM_LOCALITY_WORDS_PRINTED < $TOTAL_NUM_LOCALITY_WORDS) {
+        $count = 0;
+        foreach $l (@loc) {
+            $CURRENT_LOCALITY_WORD_LENGTH = length($l);
+            if($count >= $TOTAL_NUM_LOCALITY_WORDS_PRINTED
+                && (($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) <= 25)) {
+                $locality_label .= " $l";
+                $count++;
+                $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH;    # LINE LENGTH
+                $TOTAL_NUM_LOCALITY_WORDS_PRINTED++;
+            } elsif(($NUM_LOCALITY_WORDS_PRINTED_ON_PREV_LINES < $TOTAL_NUM_LOCALITY_WORDS)
+                && (($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) <= 25)) {
+                $count++;
+            } elsif(($CURRENT_LINE_LENGTH + $CURRENT_LOCALITY_WORD_LENGTH) > 25) {
+                $CURRENT_LINE_LENGTH = 0;
+                $locality_label .= "<br>";   # if the locality is any longer, forget it, don't print..
+                $warning .= "<br><font color=red size=2><li>locality too long -- was truncated</font><br>";
+                last;
+            }
+        }
+    }
+
+
+    #####################################################################
+    ### Begin printing of latlong, elevation, depth, date
+    ###
+
+    if(($CURRENT_LINE_LENGTH + $length_latlong) <= 25) {
+        if($latlong) {
+            if($CURRENT_LINE_LENGTH != 0) {
+                 $locality_label .= "; ";
+            }
+            $locality_label .= "$latlong";
+            $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $length_latlong;
+        }
+    } else {
+        $locality_label .= "<br>$latlong";
+        $CURRENT_LINE_LENGTH = $length_latlong;
+    }
+
+    if(($CURRENT_LINE_LENGTH + $length_elevation) <= 25) {
+        if($elevation) {
+            if($CURRENT_LINE_LENGTH != 0) {
+                 $locality_label .= "; ";
+            }
+            $locality_label .= "$elevation";
+            $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $length_elevation;
+        }
+    } else {
+        $locality_label .= "<br>$elevation";
+        $CURRENT_LINE_LENGTH = $length_elevation;
+    }
+
+    if(($CURRENT_LINE_LENGTH + $length_depth) <= 25) {
+        if($depth) {
+            if($CURRENT_LINE_LENGTH != 0) {
+                 $locality_label .= "; ";
+            }
+            $locality_label .= "$depth";
+            $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $length_depth;
+        }
+    } else {
+        $locality_label .= "<br>$depth";
+        $CURRENT_LINE_LENGTH = $length_depth;
+    }
+
+    if(($CURRENT_LINE_LENGTH + $length_date) <= 25) {
+        if($date) {
+            if($CURRENT_LINE_LENGTH != 0) {
+                 $locality_label .= "; ";
+            }
+            $locality_label .= "$date";
+            $CURRENT_LINE_LENGTH = $CURRENT_LINE_LENGTH + $length_date;
+        }
+    } else {
+        $locality_label .= "<br>$date";
+        $CURRENT_LINE_LENGTH = $length_date;
+    }
+
+}
+
+
+
+sub format_biocode_collector_label {
+    # collector
+
+    if($Collector_List =~ /,/) {
+        ### collector list has multiple collectors
+        $no_name_short_collectors = "";
+        $name_short_list = "";
+        @collectors = split(/,\s*/,$Collector_List);
+        foreach $c (@collectors) {
+            $query = "select name_short from biocode_people where name_full = \"$c\"";
+            ($name_short) = &get_one_record("$query");
+            if(!$name_short) {
+                $no_name_short_collectors .= "<br>$c<br>";
+            } else {
+                if($name_short_list) {
+                    $name_short_list .= ", $c";
+                } else {
+                    $name_short_list = "$c";
+                }
+            }
+        }
+    } else {                                       
+        ### only one collector
+        $query = "select name_short from biocode_people where name_full = \"$Collector_List\"";
+        ($name_short_list) = &get_one_record("$query");
+        if(!$name_short_list) {
+             $no_name_short_collectors = " $Collector_List ";
+        }
+    }
+
+    if($no_name_short_collectors) {
+        print "Content-type: text/html\n\n";
+        print "There is no information in the database for how the name of collector <b>$no_name_short_collectors</b> ";
+        print "should be printed on labels. ";
+        print "<p>";
+        print "Please edit the record(s) for <b>$no_name_short_collectors</b> ";
+        print "<a href=http://biocode.berkeley.edu/people_add_upd.html>here</a>.<br>Enter a name into the ";
+        print "\"Name Format for Labels\" field.<br>Then come back to the label form to print labels.";
+        exit;
+    } else {
+        $label_name = $name_short_list;
+    }
+
+    if($ProjectCode) {
+        $affiliation = $ProjectCode;
+    } else {
+        $query = "select affiliation from biocode_people where name_full = '$Collector_List'";
+        ($affiliation) = &get_one_record("$query");
+    }
+
+    $collector_label  = "$label_name<br>\n";
+    $collector_label .= "$affiliation<br>\n";  # look up in collector table
+}
+
+sub format_biocode_ecology_label {
+    # ecology
+    $ecology_label  = "$Habitat_Host<br>\n";
+}
+
+
+
+sub get_biocode_elevation {
+    if($MinElevationMeters && !$MaxElevationMeters) {
+        $elevation = sprintf('%d m.',$MinElevationMeters);
+
+    } elsif(!$MinElevationMeters && $MaxElevationMeters) {
+        $elevation = sprintf('%d m.',$MaxElevationMeters);
+
+    } elsif(!$MinElevationMeters && !$MaxElevationMeters) {
+        $elevation = "";
+
+    } elsif($MinElevationMeters && $MaxElevationMeters){
+        $elevation = sprintf('%d-%d m.',$MinElevationMeters,$MaxElevationMeters);
+
+    }
+
+}
+
+
+sub get_biocode_depth {
+    if($MinDepthMeters && !$MaxDepthMeters) {
+        $depth = sprintf('depth %d m.',$MinDepthMeters);
+
+    } elsif(!$MinDepthMeters && $MaxDepthMeters) {
+        $depth = sprintf('depth %d m.',$MaxDepthMeters);
+
+    } elsif(!$MinDepthMeters && !$MaxDepthMeters) {
+        $depth = "";
+
+    } elsif($MinDepthMeters && $MinDepthMeters){
+        $depth = sprintf('depth %d-%d m.',$MinDepthMeters,$MaxDepthMeters);
+
+    }
+
+
+}
+
+
+
+sub get_biocode_date {
+
+    $day = $DayCollected;
+    $month = $MonthCollected;
+    $year = $YearCollected;
+
+    $day2 = $DayCollected2;
+    $month2 = $MonthCollected2;
+    $year2 = $YearCollected2;
+
+    if($dateformat eq "2006apr14") {
+
+        $month = lc($mo_nums_1{"$month"});
+        $date = $year.$month.$day;
+
+        $month2 = lc($mo_nums_1{"$month2"});
+        $date2 = $year2.$month2.$day2;
+
+    } else { # date format is: 14.IV.2006
+
+        $date = &format_roman_date($year, $month, $day);
+        $date2 = &format_roman_date($year2, $month2, $day2);
+
+    }
+
+    if($date2) {
+        $date = $date."-".$date2;
+    }
+
+}
+
+
+
+sub get_biocode_country {
+
+    $country = uc($Country);
+
+    if($country eq "UNITED STATES") {
+#        $country = "USA";
+        $country = "";
+    }
+
+}
+
+
+
+sub get_biocode_stateprovince {
+
+    $state_prov = $StateProvince;
+
+    # for U.S. states only -- use standard state abbreviation
+    if($Country eq "United States" && $state_prov) {
+        $uc_state = uc($state_prov);
+        $state_prov = $state_codes{"$uc_state"};
+    }
+
+    # for non-U.S. provinces, abbreviate Province -> Prov.
+    if($Country ne "United States" && $state_prov) {
+        if($state_prov =~ /Province/) {
+            $state_prov =~ s/Province/Prov./g;
+        } 
+    } 
+
+    if($state_prov && !$country) {
+        $state_prov = "$state_prov";
+    } elsif($state_prov) {
+        $state_prov = ": $state_prov";
+    } else {
+        $state_prov = "";
+    }
+
+}
+
+
+
+sub get_biocode_county {
+ 
+    $county = $County;
+    $county = &standardize_county_names($county,$StateProvince,$Country);
+    if($county =~ /County/) {
+       $county =~ s/County/Co./g;
+    } elsif($county =~ /Parish/) {  
+       # Louisiana
+       $county =~ s/Parish/Pa./g;
+    }
+
+    if($county) {
+        $county = ": $county";
+    } else {
+        $county = "";
+    }
+
+}
+
+sub get_biocode_islandgroup {
+ 
+    $islandgroup = $IslandGroup;
+
+    if($islandgroup) {
+        $islandgroup = ": $islandgroup";
+    } else {
+        $islandgroup = "";
+    }
+
+}
+
+sub get_biocode_island {
+ 
+    $island = $Island;
+
+    if($island) {
+        $island = ": $island";
+    } else {
+        $island = "";
+    }
+
+}
+
+sub get_biocode_county {
+ 
+    $county = $County;
+    $county = &standardize_county_names($county,$StateProvince,$Country);
+    if($county =~ /County/) {
+       $county =~ s/County/Co./g;
+    } elsif($county =~ /Parish/) {  
+       # Louisiana
+       $county =~ s/Parish/Pa./g;
+    }
+
+    if($county) {
+        $county = ": $county";
+    } else {
+        $county = "";
+    }
+
+}
+
+sub print_identification_labels {
+
+    $spec_num_low = &strip($input{spec_num_low});
+    $spec_num_high = &strip($input{spec_num_high});
+    
+    &check_spec_nums($spec_num_low,$spec_num_high);
+
+    $column_count = 0;
+    $count = 0;
+
+    &print_headers_and_css($fontsize,$lines);
+
+
+    print "<table>";
+    print "<tr>";
+
+    foreach $cat_num (@catalog_nums) {
+
+        $query  = "select Genus, SpecificEpithet, SubspecificEpithet, ScientificNameAuthor, ";
+        $query .= "IdentifiedBy, YearIdentified, MonthIdentified, DayIdentified ";
+        $query .= "from biocode where CatalogNumberNumeric = $cat_num and ProjectCode = '$project_code'";
+        ($genus, $species, $subspecies, $author_year, $identifiedby, $YearIdentified, $MonthIdentified, $DayIdentified) = &get_one_record($query);
+
+        $identified_date = &format_roman_date($YearIdentified, $MonthIdentified, $DayIdentified);
+
+        $column_count++;
+        print "<td>";
+        print "$genus ";
+        print "$species $subspecies<br>";
+        print "$author_year<br>";
+        if($identifiedby) {
+            print "Det. by $identifiedby";
+            if($identified_date) {
+                print ", $identified_date";
+            }
+            print "<br>";
+#            print "Cat num: $cat_num<br>";
+        }
+        print "</td>";
+        if($column_count == $numcolumns) {
+            print "</tr>";
+            $column_count = 0;
+        }
+        $count = $count + $numcolumns;
+    }
+
+    print "</table>";
+}
+
+
+sub print_specimen_labels {
+    $spec_num_low = &strip($input{spec_num_low});
+    $spec_num_high = &strip($input{spec_num_high});
+
+    $num_check = &check_spec_nums($spec_num_low,$spec_num_high);
+
+    $column_count = 0;
+    $count = 0;
+
+    &print_headers_and_css($fontsize,$lines);
+
+    print "<table>";
+    print "<tr>";
+
+    foreach $cat_num (@catalog_nums) {
+
+        $query  = "select Genus, SpecificEpithet, SubspecificEpithet, ScientificNameAuthor ";
+        $query .= "from biocode where CatalogNumberNumeric = $cat_num and ProjectCode = '$project_code'";
+        ($genus, $species, $subspecies, $author_year) = &get_one_record($query);
+
+        $column_count++;
+        print "<td>";
+        print $project_code . $cat_num . "<br>\n";
+        print "$project_for_label";
+        print "</td>";
+        if($column_count == $numcolumns) {
+            print "</tr>";
+            $column_count = 0;
+        }
+        $count = $count + $numcolumns;
+    }
+
+    print "</table>";
+}
+
+
+sub check_spec_nums {
+    my ($low, $high) = @_;
+    my $invalid_low = "";
+    my $invalid_high = "";
+
+    if($low !~ /^\d+$/) {
+        $invalid_low = 1;
+    }
+    if($high !~ /^\d+$/) {
+        $invalid_high = 1;
+    }
+
+    if($invalid_low || $invalid_high) {
+        print "Content-type: text/html\n\n";
+        print "Invalid specimen numbers. Specimen numbers must both be an integer. :(";
+        exit;
+    }
+
+    $query  = "select CatalogNumberNumeric from biocode where CatalogNumberNumeric >= $low and CatalogNumberNumeric <= $high ";
+    $query .= "and ProjectCode = '$project_code'";
+    $tmp = &get_multiple_records("$query");
+
+    chdir($tmp_dir) || die "Can't open tmp_dir $tmp_dir ";
+
+    open(FH, "$tmp") || die "Can't open tmp $tmp file ";
+    while(<FH>) {
+        $CatalogNumberNumeric = $_;
+        push(@catalog_nums, $CatalogNumberNumeric);
+    }
+    close(FH);
+
+    if(!$catalog_nums[0]) {
+        print "Content-type: text/html\n\n";
+        print "There are no specimen records with numbers between $low and $high. :(";
+        exit;
+    }
+
+}
+
+
+
+
+sub format_roman_date {
+    my ($YearIdentified, $MonthIdentified, $DayIdentified) = @_;
+    my $identified_date = "";
+    my $y = 0;
+    my $m = 0;
+    my $d = 0;
+    my $date = "";
+
+    if($YearIdentified) {
+        $y = 1;
+    }
+    if($MonthIdentified) {
+        $m = 1;
+        $MonthIdentified = $roman_month_nums_lower{$MonthIdentified};
+    }
+    if($DayIdentified) {
+        $d = 1;
+    }
+
+    if($d && $m && $y) {
+        $date = "$DayIdentified".".$MonthIdentified.".$YearIdentified;
+    } elsif($y && $m) {
+        $date = "$MonthIdentified.".$YearIdentified;
+    } elsif($y) {
+        $date = "$YearIdentified";
+    } else { # no date
+        $date = "";
+    }
+
+    return $date;
+}
+
+
+
+sub get_biocode_latlong {
+
+    if($latlongformat eq "decimal") {
+        $latlong = "$DecimalLatitude $DecimalLongitude";
+    } else {
+        $latlong = "$VerbatimLatitude $VerbatimLongitude";
+    }
+}

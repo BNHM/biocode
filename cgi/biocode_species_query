@@ -1,0 +1,1179 @@
+#!/usr/bin/perl
+
+# biocode_species_query Jan 2004  (using mysql)
+
+
+# $DEBUG = 1;
+$CRASH = 0;
+$crash_date = "Thu Apr 28 22:33:59 PDT 2005";
+
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p"; 
+require "mybiocode_utils.p";
+
+if ($CRASH) {
+    print "Content-type: text/html\n\n";
+    print "<h3>Sorry, our database is temporarily offline ";
+    print "while update the data.</h3>";
+    print "Please try again in an hour .";
+    print "<p>This message was last updated <b>$crash_date</b><p>";
+    exit;
+}
+
+$download_on = 1;
+$tmp_dir =  "$tmp_file_location/biocode_species_query";
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+
+
+####  This is to keep track of sessions.
+$tmp_login_dir = "$tmp_file_location/unknown_query";
+if($input{lfile} && !-e "$tmp_login_dir/$input{lfile}") {
+    $input{lfile} = "";
+    $login = 0;
+} elsif($input{lfile}) {
+    # update the date on the lfile, so it doesn't get deleted yet
+    `touch $tmp_login_dir/$input{lfile}`;
+    $login = 1;
+} else {
+    $login = 0;
+}
+#### End session stuff
+
+
+
+
+### begin ################################
+
+
+$table = "biocode_species";
+$script_name = "biocode_species_query";
+$heading = "Moorea Biocode Species Lists";
+
+
+if($input{"selectlist"}) {
+    $selectlist = $input{"selectlist"};
+} else {
+    $selectlist = " * ";
+}
+
+if($input{"special"} eq "browse") {
+    $max_rows = 2000;
+    $max = 2000;
+} elsif($input{maxrows}) {
+    $max_rows = $input{maxrows};
+    $max = $input{maxrows};
+} else {
+    $max_rows = 100;
+    $max = 100;
+}
+
+
+### really begin #########################
+
+
+if ($input{"download"}) {
+    ## sort=DOWNLOAD is incoming
+    ## set whereclause
+
+    $displaylist = $input{'displaylist'};
+    &download_biocode_species_file($input{"download"});
+
+
+} elsif($input{step} eq "detail") {
+
+    if($input{bnhm_id}) {
+        &print_detail_page_from_specimen_record;
+    } else {
+        &print_detail_page;
+    }
+
+} elsif($input{"tmpfile"} eq "") {   # this is not a next or prev page
+    
+    if ($DEBUG) {$debug_msg .= "<h4>biocode_species_query</h4> calling build_query.  selectlist: $selectlist<p>";}
+    &build_query;  # query_utils.p
+    &do_regular_query;
+
+} elsif($input{"tmpfile"} ne "") {  # next or prev page
+    &use_tmp_file;
+}
+
+&make_log_entry("biocode_species",$whereclause,$stat);
+
+### end ###################################
+
+
+
+sub do_regular_query {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In do_regular_query</h4>";}    
+
+    &print_biocode_header_css($heading);
+    print "<blockquote>\n";
+
+    if (!$whereclause || $whereclause !~ /^WHERE/) {
+	$whereclause = "nothing selected";
+	$num_matches = 0;
+	print "<p><h3>Error: Please go back and select at least one field to query on.</h3>"; 
+	if ($DEBUG) {
+	    print "<p>DEBUG_MSG<p>$debug_msg;";
+	}
+	&print_biocode_footer("species_search");
+	return;
+ 
+    }
+
+    #print "Content-type: text/text\n\n";
+    #print "QUERY: $query";
+    #exit;
+
+    $tmp = &get_multiple_records($query,"biocode");  # query_utils.p
+
+    if ($DEBUG) {$debug_msg .= "made tmp lfile tmp=$tmp ...\n";}
+
+    if ($DEBUG) {$debug_msg .=  "calling check_max ...\n";}
+    &check_max;  # query_utils.p
+
+    if ($num_matches eq 0) {
+	print "<h4>Sorry - no matches. Please try again.</h4>";
+        print "<small><b>Query:</b> $query</small><br>\n";
+	if ($DEBUG) {
+            print "<p>DEBUG_MSG<p>$debug_msg;";
+        }
+	&print_biocode_footer("species_search");
+	return;    
+    }
+
+    $query_results = $tmp;
+    if ($DEBUG) {$debug_msg .=  "calling print_multiple_records ...\n";}
+    if ($DEBUG) {$debug_msg .=  "<br>query_results: $query_results";}
+    &print_multiple_records;
+}
+
+
+
+sub use_tmp_file {
+
+    if ($DEBUG) {$debug_msg .= "<p>In use_tmp_file<p>\n";}
+
+    $whereclause = $input{'prevwhere'};
+    &print_biocode_header_css($heading);
+    print "<blockquote>\n";
+
+    &check_max; # query_utils.p
+    $query_results = "$tmp_file_location/biocode_species_query/$input{'tmpfile'}";
+
+    if ($DEBUG) {$debug_msg .=  "<h4>query_results: $query_results</h4>>\n";}
+    &print_multiple_records;
+}
+
+
+sub print_multiple_records {
+    
+    $some_pics=0;
+    if ($DEBUG) {$debug_msg .= "<h4>In print_multiple_records</h4>";}
+    if($input{"special"} eq "browse") {
+        $stat = "BROWSE";
+        &print_table_cells_browse;
+    } else {
+        $stat = "SEARCH";
+        &print_table_cells;
+    }
+
+    print "</table>\n";
+    
+    print "<br>\n";
+    &check_max_no_print_num_matches;
+
+    if ($DEBUG) {
+	print "<p>DEBUG_MSG<p>$debug_msg;";
+    }
+    &print_biocode_footer("species_search");
+
+}
+    
+
+sub print_table_cells {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In print_table_cells<h4>";}
+
+    $searchstring = $whereclause;
+    $searchstring =~ s/WHERE//g;
+
+    ## stuff for download button
+    $dwhere = &strip($searchstring);
+    $dwhere =~ s/ /\+/g;
+
+    if ($download_on) {
+        $filesize = sprintf("%.1f",(-s $query_results) / 1000);
+        print "<p><li><a href=/cgi/biocode_species_query?download=$query_results";
+        print "&table=biocode_species&num=$num_matches&whereclause=$dwhere&stat=DOWNLOAD>Download your results</a> ";
+        print " (tab-delimited text file, $num_matches lines, file size = $filesize K)<p>";
+    }
+
+
+    print "<p>\n";
+    if ($input{"tmpfile"} eq "") {  # not next or prev page
+        print "<small><b>Query:</b> $query</small><br><p>\n";
+    } 
+    
+    print "<table border>";
+    print "<TR>";
+    print "<th><small>Kingdom</th>\n";
+    print "<th><small>Phylum</th>\n";
+    if($input{display2}) {
+        print "<th><small>Subphylum</th>\n";
+    }
+    if($input{display3}) {
+        print "<th><small>Superclass</th>\n";
+    }
+    print "<th><small>Class</th>\n";
+    if($input{display4}) {
+        print "<th><small>Subclass</th>\n";
+    }
+    if($input{display5}) {
+        print "<th><small>Infraclass</th>\n";
+    }
+    if($input{display6}) {
+        print "<th><small>Superorder</th>\n";
+    }
+    print "<th><small>Order</th>\n";
+    if($input{display7}) {
+        print "<th><small>Suborder</th>\n";
+    }
+    if($input{display8}) {
+        print "<th><small>Infraorder</th>\n";
+    }
+    if($input{display9}) {
+        print "<th><small>Superfamily</th>\n";
+    }
+    print "<th><small>Family</th>\n";
+    if($input{display10}) {
+        print "<th><small>Subfamily</th>\n";
+    }
+    if($input{display11}) {
+        print "<th><small>Tribe</th>\n";
+    }
+    if($input{display12}) {
+        print "<th><small>Subtribe</th>\n";
+    }
+    print "<th><small>Genus</th>\n";
+    if($input{display6}) {
+        print "<th><small>Subgenus</th>\n";
+    }
+    print "<th><small>Species</th>\n";
+    print "<th><small>Subspecies</th>\n";
+    print "<th><small>Author, Year</th>\n";
+    print "<th><br></th>\n";
+    print "<th><br></th>\n"; # for photo
+    if($login) {
+        print "<th><br></th>\n";
+        print "<th><br></th>\n";
+    }
+# HHERE
+
+    open(FH, "$query_results") || die "Can't open tmp file query_results $query_results for reading";
+    local($count) = 0;
+
+    while(<FH>) {
+	
+        if(($count < ($row_to_start + $max_rows)) && ($count >= $row_to_start)) {
+
+            @row = split(/\t/,$_);
+            &fill_fields_with_values("biocode_detail_species");
+
+            $subspecies = &strip($subspecies);
+            if($subspecies =~ /n\/a/) {
+                $subspecies = "";
+            }
+            $author_year = &format_author_year($author,$year);
+
+            $taxon = "$genus $species $subspecies";  # for creating photo URL
+            $taxon = &strip($taxon);                 # for creating photo URL
+            $taxon =~ s/\s/\+/g;                     # for creating photo URL
+
+            print "<tr>";
+	    print "<td>$kingdom<br></td>\n";
+	    print "<td>$phylum<br></td>\n";
+            if($input{display2}) {
+                print "<td>$subphylum<br></td>\n";
+            }
+            if($input{display3}) {
+                print "<td>$superclass<br></td>\n";
+            }
+	    print "<td>$class<br></td>\n";
+            if($input{display4}) {
+                print "<td>$subclass<br></td>\n";
+            }
+            if($input{display5}) {
+                print "<td>$infraclass<br></td>\n";
+            }
+            if($input{display6}) {
+                print "<td>$superorder<br></td>\n";
+            }
+	    print "<td>$ordr<br></td>\n";
+            if($input{display7}) {
+                print "<td>$suborder<br></td>\n";
+            }
+            if($input{display8}) {
+                print "<td>$infraorder<br></td>\n";
+            }
+            if($input{display9}) {
+                print "<td>$superfamily<br></td>\n";
+            }
+	    print "<td>$family<br></td>\n";
+            if($input{display10}) {
+                print "<td>$subfamily<br></td>\n";
+            }
+            if($input{display11}) {
+                print "<td>$tribe<br></td>\n";
+            }
+            if($input{display12}) {
+                print "<td>$subtribe<br></td>\n";
+            }
+	    print "<td>$genus<br></td>\n";
+            if($input{display6}) {
+                print "<td>$subgenus<br></td>\n";
+            }
+	    print "<td>$species<br></td>\n";
+	    print "<td>$subspecies<br></td>\n";
+	    print "<td>$author_year<br></td>\n";
+            print "<td><small>";
+            if($lfile) {
+               print "<a class=subtle_link href=\"/cgi-bin/biocode_species_query?lfile=$lfile&seq_num=$seq_num&step=detail\">record<br>detail</a></td>\n";
+            } else {
+               print "<a class=subtle_link href=\"/cgi-bin/biocode_species_query?seq_num=$seq_num&step=detail\">record<br>detail</a></td>\n";
+            }
+
+            if($photo == 1) {
+#                print "<td><a href=\"http://calphotos.berkeley.edu/cgi/img_query?where-taxon=$taxon\"><img src=\"http://biocode.berkeley.edu/graphics/photo.gif\" border=0></a></td>\n";
+                print "<td><img src=\"/graphics/photo.gif\" border=0></td>\n";
+            } else {
+                print "<td><br></td>\n";
+            }
+
+            if($login) {
+
+                print "<td>\n";
+                $url_part = "family=$family&subfamily=$subfamily&tribe=$tribe&genus=$genus&species=$species&subspecies=$subspecies&seq_num=$seq_num";
+                # $url_part = "seq_num=$seq_num";
+                $url_part =~ s/"/&quot;/g;
+                print "<a class=subtle_link href=\"/cgi/biocode_edit_species?$url_part&lfile=$input{lfile}&step=form\">edit</a>\n";
+                print "</td>\n";
+                print "<td>\n";
+                print "<a class=subtle_link href=\"/cgi/biocode_edit_species?lfile=$input{lfile}&step=add&addtype=genus&seq_num=$seq_num\">add</a>\n";
+                print "</td>\n";
+            }
+
+
+	}
+
+	print "</tr>";
+        $count++;
+    }
+    close(FH);
+}
+
+
+
+sub print_photo_for_detail {
+
+
+    ## first make sure there really are photos in CalPhotos
+    $num_spec_pics = &get_count("img","specimen_no='$dc_cat_num'");
+    if ($num_spec_pics) {
+	print "<td align=center valign=top>";
+	($one,$two,$three,$four) = split(/ /,$pic);
+	$path = &get_path("$one $two $three",$four);
+	$tnail_url = "/imgs/128x192/$path";
+	$enl_kwid = $pic;
+	$enl_kwid =~ s/ /\+/g;
+	print "<a href=http://calphotos.berkeley.edu/cgi/img_query?enlarge=$enl_kwid>\n";
+	print "<img border=0 ";
+	print "src=$tnail_url alt=\"click for enlargement\"></a>\n";
+
+	print "<br>1 of ";
+	print "<a href=http://calphotos.berkeley.edu/cgi/img_query?where-specimen_no=$dc_cat_num>$num_spec_pics</a>";
+	print "<br><small>click on image to view enlargement</small>";
+	print "</td>\n";
+    }
+}
+
+
+
+
+sub print_table_cells_browse {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In print_table_cells<h4>";}
+
+    $searchstring = $whereclause;
+    $searchstring =~ s/WHERE//g;
+
+    ## stuff for download button
+    $dwhere = &strip($searchstring);
+    $dwhere =~ s/ /\+/g;
+
+    $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+
+    $listtype = $input{"orderby"};
+    $newlisttype = &get_newlisttype($listtype);
+    $newselectlist = &get_newselectlist($listtype);
+
+    print "<p><small><b>Query:</b> $query</small><br><p>\n";
+
+    if($listtype eq "genus") {
+        print "<small><font color=999999>order</small></font> ";
+        print "<b><a href=\"/cgi/biocode_species_query?stat=BROWSE&special=browse&rel-biocode.ordr=eq&groupby=biocode.family&orderby=biocode.family&selectlist=biocode.family&where-biocode.ordr=$input{'where-ordr'}&Search=Browse&lfile=$input{lfile}\">$input{'where-ordr'}</a></b>\n";
+        print "<br>";
+        print "&nbsp;&nbsp;&nbsp;<small><font color=999999>family</font></small> <b>$input{'where-family'}</b>:<blockquote>";
+    }
+    if($listtype ne "genus") {
+        print "<small><font color=999999>order</font></small> ";
+#        print "<b><a href=\"/cgi/biocode_species_query?stat=BROWSE&special=browse&rel-ordr=eq&groupby=family&orderby=family&selectlist=family&where-ordr=$input{'where-ordr'}&Search=Browse&lfile=$input{lfile}\">$input{'where-ordr'}</a></i></b>\n";
+        print "<b>$input{'where-ordr'}</b>\n";
+        print "<blockquote>";
+    }
+
+    print "<table border=0>";
+    print "<tr>";
+    if($listtype eq "genus") {
+        print "<tr><td align=left><small><font color=999999>genus species subspecies (author, year)</font></td>\n";
+    } else {
+        print "<tr><td align=left><small><font color=999999>$listtype</font></td>\n";
+    }
+
+
+    open(FH, "$query_results") || die "Can't open tmp file query_results $query_results for reading";
+    local($count) = 0;
+
+    while(<FH>) {
+
+        @row = split(/\t/,$_);
+        $count = $row[0];
+        $value = $row[1];
+        # we get the values below only if listtype=genus
+        $species = $row[2];
+        $subspecies = $row[3];
+        $author = $row[4];
+        $year = $row[5];
+        $photo = $row[6];
+        $seq_num = $row[7];
+
+        $author = &strip($author);
+        $year = &strip($year);
+
+ 
+        print "<tr>";
+        print "<td>";
+        if($listtype eq "genus") {
+            if($subspecies =~ /n\/a/) {   # if subspecies = n/a
+                $subspecies = "";
+            }
+            $author_year = &format_author_year($author,$year);
+            $taxon = "$value $species $subspecies";
+            $taxon = &strip($taxon);
+            $taxon =~ s/\s/\+/g;
+
+            if($login) {
+                print "<i><a href=\"/cgi-bin/biocode_species_query?step=detail&seq_num=$seq_num&lfile=$lfile\">$value $species $subspecies</a></i>";
+            } else {
+                print "<i><a href=\"/cgi-bin/biocode_species_query?step=detail&seq_num=$seq_num\">$value $species $subspecies</a></i>";
+            }
+
+            print " $author_year";
+            if($photo == 1) {
+                print " <a href=\"http://calphotos.berkeley.edu/cgi/img_query?where-taxon=$taxon\"><img src=\"/graphics/photo.gif\" border=0></a>";
+            }
+            print "<br>\n";
+            print "</td>\n";
+            if($login == 1) {
+                print "<td>\n";
+# AAA
+                $url_part = "family=$input{'where-family'}&subfamily=$input{subfamily}&tribe=$input{tribe}&genus=$value&species=$species&subspecies=$subspecies&seq_num=$seq_num";
+                # $url_part = "seq_num=$seq_num";
+                $url_part =~ s/"/&quot;/g;
+                print "<a class=subtle_link href=\"/cgi/biocode_edit_species?$url_part&lfile=$input{lfile}&step=form\">edit</a>\n";
+                print "</td>\n";
+            }
+
+        } else {
+            chomp($value);
+            print "<a href=/cgi/biocode_species_query?special=browse&rel-ordr=eq&groupby=$newlisttype&orderby=$newlisttype&selectlist=$newselectlist&rel-$listtype=eq&where-ordr=$input{'where-ordr'}&where-$listtype=$value&lfile=$input{lfile}>$value</a> <small>($count)</small><br></td>\n";
+        }
+        print "</tr>";
+        $count++;
+    }
+    close(FH);
+
+}
+
+sub get_newlisttype {
+
+    my ($oldlisttype) = @_;
+
+    if($oldlisttype eq "ordr") {
+       return "family";
+    } elsif($oldlisttype eq "family") {
+       return "genus";
+    } else {
+       return "none";
+    }
+}
+
+
+sub get_newselectlist {
+
+    my ($oldselectlist) = @_;
+
+    if($oldselectlist eq "ordr") {
+       return "family";
+    } elsif($oldselectlist eq "family") {
+       return "genus,species,subspecies,author,year,photo,seq_num";
+    } else {
+       return "none";
+    }
+}
+
+
+
+#sub format_author_year {
+#
+#    $author_year = "";
+#
+#    if($author =~ /\(/) {
+#        $parens = 1;
+#        $author =~ s/\(//g;
+#        $author =~ s/\)//g;
+#    } else {
+#        $parens = 0;
+#    }
+#
+#    if($parens) {
+#        if($author && $year) {
+#            $author_year = "($author, $year)";
+#        } else {
+#            $author_year = "($author)";
+#        }
+#    } else {
+#        if($author && $year) {
+#            $author_year = "$author, $year";
+#        } elsif($year) {
+#            $author_year = "$year";
+#        } elsif($author) {
+#            $author_year = "$author";
+#        } else {
+#            $author_year = "";
+#        }
+#    }
+#
+#    return $author_year;
+#}
+
+
+sub print_detail_page_from_specimen_record {
+
+    $bnhm_id = $input{bnhm_id};
+
+    if($bnhm_id !~ /^[a-z]+[0-9]+$/i) {    # added May 2011 -- to prevent db hackers
+        print "Content-type: text/html\n\n";
+        exit;
+    }
+    $query  = "select * from biocode where bnhm_id = '$bnhm_id'";
+    (@row) = &get_one_record("$query","biocode");
+    &fill_fields_with_values("biocode");
+
+
+    $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+
+    $whereclause = "WHERE genus = \"$genus\" and species = \"$species\" ";
+    if($subspecies) {
+        $whereclause .= "and subspecies = \"$subspecies\"";
+    }
+    $stat = "DETAIL";
+
+    &print_biocode_header_css($heading);
+
+    $collection = "$collection &nbsp;&nbsp;</b><small>(in Moorea Biocode collection = 1; in other collection = 0)</small><b>";
+    
+    print "<blockquote>\n";
+
+    # print "QUERY: $query";
+
+    print "<p>";
+    print "<font size=+2>Species record for <b><i>$Genus $SpecificEpithet $SubspecificEpithet</i></b> $ScientificNameAuthor";
+    print "</font>";
+    print "<p>";
+
+    print "<table border=0>\n";
+    print "<tr>\n";
+    print "<td valign=top>\n";
+
+    print "<table cellspacing=5 id=box>\n";
+
+    ### detail from biocode_species (taxonomy)
+    @taxonomy_for_detail_page = qw(Kingdom Phylum Subphylum Superclass Class Subclass Infraclass Superorder Ordr Suborder Infraorder Superfamily Family Subfamily Tribe Subtribe Genus Subgenus SpecificEpithet SubspecificEpithet ScientificNameAuthor);
+
+    print "<tr>\n";
+    print "<td class=box>\n";
+    foreach $i (@taxonomy_for_detail_page) {
+        print "<tr><td nowrap>$i</td><td><b>${$i}</b></td></tr>\n";
+        $count++;
+    }
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+    print "</td>\n";
+    print "<td>\n";
+    print "<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "</td>\n";
+    print "<td valign=top>\n";
+
+
+    ### detail from biocode (specimen & tissue records)
+
+
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td>\n";
+
+
+    # get number of specimen records
+
+    # remove family Oct 27, 2009; is breaking search for bulkloaded records
+    # $query = "select count(*) from biocode where ScientificName = '$Genus $SpecificEpithet' and family = '$family'";
+    if($Family) {
+        $family = " and Family = '$Family' ";
+    }
+    $query = "select count(*) from biocode where ScientificName = '$Genus $SpecificEpithet' $family ";
+
+    ($count) = &get_one_record($query,"biocode");
+    if($count) {
+        if($count == 1) { 
+            $record_word = "record";
+        } else {
+            $record_word = "records";
+        }
+        # remove family Oct 27, 2009; is breaking search for bulkloaded records
+        # print "View the <a href=/cgi/biocode_query?where-biocode.Family=$family&where-biocode.PublicAcess=null&where-biocode.ScientificName=$Genus+$SpecificEpithet&$join>$count <b>specimen</b> $record_word</a> for <i>$Genus $SpecificEpithet</i>.\n";
+        print "View the <a href=/cgi/biocode_query?where-biocode.PublicAcess=null&where-biocode.ScientificName=$Genus+$SpecificEpithet&$join>$count <b>specimen</b> $record_word</a> for <i>$Genus $SpecificEpithet</i>.\n";
+        print "<p>\n";
+    } else {
+        print "There are no specimen records for this species.";
+        print "<p>\n";
+    }
+
+    # get number of tissue records
+    # remove family Oct 27, 2009; is breaking search for bulkloaded records
+    $query  = "select count(*) from biocode_tissue, biocode where biocode.ScientificName = '$Genus $SpecificEpithet' ";
+    # $query .= "and family = '$family' and biocode_tissue.bnhm_id = biocode.bnhm_id ";
+    $query .= "and biocode_tissue.bnhm_id = biocode.bnhm_id ";
+    ($count) = &get_one_record($query,"biocode");
+    if($count) {
+        if($count == 1) { 
+            $record_word = "record";
+        } else {
+            $record_word = "records";
+        }
+        print "View the <a href=/cgi/biocode_tissue_query?table=biocode_tissue&jointables=biocode%2Cbiocode_tissue&joincolumns=biocode.bnhm_id+%3D+biocode_tissue.bnhm_id&where-biocode.Genus=$Genus&where-biocode.SpecificEpithet=$SpecificEpithet&where-biocode.family=$family&Search=Search>$count <b>tissue</b> $record_word</a> for <i>$Genus $SpecificEpithet</i>.\n";
+        print "<p>\n";
+
+        # print link to BOLD
+        $taxon_url = "$Genus $SpecificEpithet $SubspecificEpithet";
+        $taxon_url = &strip($taxon_url);
+        $taxon_url =~ s/\s/+/g;
+
+        print "<table>\n";
+        print "<tr>\n";
+        print "<td>\n";
+        print "<img src=http://biocode.berkeley.edu/graphics/BOLDS_logo.jpg>\n";
+        print "</td>\n";
+        print "<td>\n";
+        print "&nbsp;View <a href=http://www.boldsystems.org/views/taxbrowser.php?taxon=$taxon_url>BOLD page</a> for <i>$Genus $SpecificEpithet $SubspecificEpithet</i>.\n";
+        print "</td>\n";
+        print "</tr>\n";
+        print "</table>\n";
+  
+    }
+
+    print "<p>\n";
+    print "<hr>\n";
+    print "<p>\n";
+
+    ### links to outside sources
+
+    print "Look up ";
+    print "<i>$Genus $SpecificEpithet</i> at: ";
+    print "<blockquote>";
+
+
+    print "<table border=0>";
+
+    ### LTER
+    if($lter_num) {
+        print "<tr><td align=right>\n";
+        print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/lter.jpg>";
+        print "</td><td>\n";
+        print "<a href=http://mcr.lternet.edu/education/speciescard.php?refID=2&CreatureID=$lter_num>";   # April 27, 2009 note: do any of these links work anymore? (jg)
+        print "Marine Life of Moorea</a>\n";
+        print "</td></tr>\n";
+        print "<tr><td colspan=2>\n";
+        print "<hr>\n";
+        print "</td></tr>\n";
+    }
+
+    ### eol
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/eol_icon.jpg>";
+    print "</td><td>\n";
+    print "<a href=\"http://eol.org/$Genus $SpecificEpithet\">";
+    print "EOL</a>\n";
+    print "</td></tr>\n";
+
+    ### itis  
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/ITISlogo.gif>";
+    print "</td><td>\n";
+    #print "<a href=http://www.itis.usda.gov/plantproj/itis/cgi_bin/itis_query.cgi?kingdom=Animalia&input_type=S&input=$Genus+$SpecificEpithet>";
+    print "<a href=http://www.itis.gov/servlet/SingleRpt/SingleRpt?search_topic=Scientific_Name&search_value=$Genus+$SpecificEpithet&search_kingdom=Animal&search_span=exactly_for&categories=All&source=html&search_credRating=All>";
+    print "ITIS</a>\n";
+    print "</td></tr>\n";
+
+    ### gbif
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/gbif_logo.jpg>";
+    print "</td><td>\n";
+    print "<a href=http://data.gbif.org/search/$Genus+$SpecificEpithet>";
+    print "GBIF</a>\n";
+    print "</td></tr>\n";
+
+    ### fishbase
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/Fishbaselogo.gif>";
+    print "</td><td>\n";
+    print "<a href=http://www.fishbase.org/Summary/speciesSummary.php?genusname=$Genus&speciesname=$SpecificEpithet>";
+    print "FishBase</a>";
+    print "</td></tr>\n";
+
+    ### obis
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/ObisLogo.gif>";
+    print "</td><td>\n";
+    print "<a href=http://www.iobis.org/OBISWEB/ObisControllerServlet?searchCategory=/AdvancedSearchServlet&genus=$Genus&species=$SpecificEpithet&Subspecies=&sciname=$Genus%20$SpecificEpithet>OBIS</a>";
+    print "</td></tr>\n";
+
+    ### ubio
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/ubioLogo.gif>";
+    print "</td><td>\n";
+    #print "<a href=http://www.ubio.org/SOAPbrowser/index.php?s=1&v=1&func=search&string=$Genus+$SpecificEpithet>uBIO</a>";
+    print "<a href=http://portal.ubio.org/index.php?tnsnav=lists&searchtype=web&map=&start=0&search=$Genus+$SpecificEpithet>uBIO</a>";
+    print "</td></tr>\n";
+
+    ### genbank
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/GenBanklogo.gif>";
+    print "</td><td>\n";
+    print "<a href=http://www.ncbi.nlm.nih.gov/entrez/query.fcgi?cmd=Search&db=Nucleotide&term=\"$Genus+$SpecificEpithet\">GenBank</a>";
+    print "</td></tr>\n";
+
+    print "</table>\n";
+
+    print "</blockquote>";
+
+    ### some things not done above:
+    #     - if species or genus is more than one word each, urls will break
+    #     - have to check for if fish = true before making link to fishbase query
+    #     - have to check for if ocean animal = true before making link to obis query
+    #     - have to deal with possible subspecies
+
+
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+
+    print "</td>\n";
+
+    print "<td>\n";
+    print "<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "</td>\n";
+
+    print "<td align=center valign=top>\n";
+    &print_one_biocode_species_pic("$Genus $SpecificEpithet $SubspecificEpithet");
+
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+    print "</blockquote>\n";
+
+
+    &print_biocode_footer("species_search");
+
+
+}
+
+
+
+
+
+
+sub print_detail_page {
+
+    if(!$seq_num && !$input{genus} && !$input{species}) {    # added May 2011 -- to prevent db hackers
+        print "Content-type: text/html\n\n";
+        print "No valid input";
+        exit;
+    }
+    if($seq_num) {
+        $query = "select * from biocode_species where seq_num = $seq_num";
+        (@row) = &get_one_record("$query","biocode");
+    } else {
+        if($input{species}) {
+            $query  = "select * from biocode_species where genus = '$input{genus}' and species = '$input{species}' ";
+        } else {
+            $query  = "select * from biocode_species where genus = '$input{genus}' and species is null ";
+        }
+        if($input{subspecies}) {
+            $query .= " and subspecies = '$input{subspecies}'";
+        } else {
+            $query .= " and subspecies is null";
+        }
+        (@row) = &get_one_record("$query","biocode");
+    }
+
+    &fill_fields_with_values("biocode_species");
+
+    $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+
+    # $whereclause = "WHERE family = \"$family\" and genus = \"$genus\" and species = \"$species\" ";   # remove family Oct 27, 2009; is breaking search for bulkloaded records
+    $whereclause = "WHERE genus = \"$genus\" and species = \"$species\" ";
+    if($subspecies) {
+        $whereclause .= "and subspecies = \"$subspecies\"";
+    }
+    $stat = "DETAIL";
+
+    &print_biocode_header_css($heading);
+
+    $author_year = &format_author_year($author,$year);
+
+    $collection = "$collection &nbsp;&nbsp;</b><small>(in Moorea Biocode collection = 1; in other collection = 0)</small><b>";
+    
+    print "<blockquote>\n";
+
+    # print "QUERY: $query";
+
+    print "<p>";
+    print "<font size=+2>Species record for <b><i>$genus $species $subspecies</i></b> $author_year";
+    print "</font>";
+    print "<p>";
+
+    print "<table border=0>\n";
+    print "<tr>\n";
+    print "<td valign=top>\n";
+
+    print "<table cellspacing=5 id=box>\n";
+
+    ### detail from biocode_species (taxonomy)
+    print "<tr>\n";
+    print "<td class=box>\n";
+    foreach $i (@biocode_detail_species_schema) {
+        if($i eq "date_added" || $i eq "edit_name_date" || $i eq "checkflag" 
+            || $i eq "source" || $i eq "collection") {
+            if($login == 1) {
+                print "<tr><td nowrap>$i</td><td><b>${$i}</b></td></tr>\n";
+            }
+        } elsif($i eq "photo") { 
+            # print nothing
+        } else {
+            print "<tr><td nowrap>$i</td><td><b>${$i}</b></td></tr>\n";
+        }
+        $count++;
+    }
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+    print "</td>\n";
+    print "<td>\n";
+    print "<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "</td>\n";
+    print "<td valign=top>\n";
+
+
+    ### detail from biocode (specimen & tissue records)
+
+
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td>\n";
+
+
+    # get number of specimen records
+
+    # remove family Oct 27, 2009; is breaking search for bulkloaded records
+    # $query = "select count(*) from biocode where ScientificName = '$genus $species' and family = '$family'";
+    $query = "select count(*) from biocode where ScientificName = '$genus $species' ";
+
+    ($count) = &get_one_record($query,"biocode");
+    if($count) {
+        if($count == 1) { 
+            $record_word = "record";
+        } else {
+            $record_word = "records";
+        }
+        # remove family Oct 27, 2009; is breaking search for bulkloaded records
+        # print "View the <a href=/cgi/biocode_query?where-biocode.Family=$family&where-biocode.PublicAcess=null&where-biocode.ScientificName=$genus+$species&$join>$count <b>specimen</b> $record_word</a> for <i>$genus $species</i>.\n";
+        print "View the <a href=/cgi/biocode_query?where-biocode.PublicAcess=null&where-biocode.ScientificName=$genus+$species&$join>$count <b>specimen</b> $record_word</a> for <i>$genus $species</i>.\n";
+        print "<p>\n";
+    } else {
+        print "There are no specimen records for this species.";
+        print "<p>\n";
+    }
+
+    # get number of tissue records
+    # remove family Oct 27, 2009; is breaking search for bulkloaded records
+    $query  = "select count(*) from biocode_tissue, biocode where biocode.ScientificName = '$genus $species' ";
+    # $query .= "and family = '$family' and biocode_tissue.bnhm_id = biocode.bnhm_id ";
+    $query .= "and biocode_tissue.bnhm_id = biocode.bnhm_id ";
+    ($count) = &get_one_record($query,"biocode");
+    if($count) {
+        if($count == 1) { 
+            $record_word = "record";
+        } else {
+            $record_word = "records";
+        }
+        print "View the <a href=/cgi/biocode_tissue_query?table=biocode_tissue&jointables=biocode%2Cbiocode_tissue&joincolumns=biocode.bnhm_id+%3D+biocode_tissue.bnhm_id&where-biocode.Genus=$genus&where-biocode.SpecificEpithet=$species&where-biocode.family=$family&Search=Search>$count <b>tissue</b> $record_word</a> for <i>$genus $species</i>.\n";
+        print "<p>\n";
+
+        # print link to BOLD
+        $taxon_url = "$genus $species $subspecies";
+        $taxon_url = &strip($taxon_url);
+        $taxon_url =~ s/\s/+/g;
+
+        print "<table>\n";
+        print "<tr>\n";
+        print "<td>\n";
+        print "<img src=http://biocode.berkeley.edu/graphics/BOLDS_logo.jpg>\n";
+        print "</td>\n";
+        print "<td>\n";
+        print "&nbsp;View <a href=http://www.boldsystems.org/views/taxbrowser.php?taxon=$taxon_url>BOLD page</a> for <i>$genus $species $subspecies</i>.\n";
+        print "</td>\n";
+        print "</tr>\n";
+        print "</table>\n";
+  
+    }
+
+    print "<p>\n";
+    print "<hr>\n";
+    print "<p>\n";
+
+    ### links to outside sources
+
+    print "Look up ";
+    print "<i>$genus $species</i> at: ";
+    print "<blockquote>";
+
+
+    print "<table border=0>";
+
+    ### LTER
+    if($lter_num) {
+        print "<tr><td align=right>\n";
+        print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/lter.jpg>";
+        print "</td><td>\n";
+        print "<a href=http://mcr.lternet.edu/education/speciescard.php?refID=2&CreatureID=$lter_num>";   # April 27, 2009 note: do any of these links work anymore? (jg)
+        print "Marine Life of Moorea</a>\n";
+        print "</td></tr>\n";
+        print "<tr><td colspan=2>\n";
+        print "<hr>\n";
+        print "</td></tr>\n";
+    }
+
+    ### itis  
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/ITISlogo.gif>";
+    print "</td><td>\n";
+    #print "<a href=http://www.itis.usda.gov/plantproj/itis/cgi_bin/itis_query.cgi?kingdom=Animalia&input_type=S&input=$genus+$species>";
+    print "<a href=http://www.itis.gov/servlet/SingleRpt/SingleRpt?search_topic=Scientific_Name&search_value=$genus+$species&search_kingdom=Animal&search_span=exactly_for&categories=All&source=html&search_credRating=All>";
+    print "ITIS</a>\n";
+    print "</td></tr>\n";
+
+    ### gbif
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/gbif_logo.jpg>";
+    print "</td><td>\n";
+    print "<a href=http://newportal.gbif.org/search/$genus+$species>";
+    print "GBIF</a>\n";
+    print "</td></tr>\n";
+
+    ### fishbase
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/Fishbaselogo.gif>";
+    print "</td><td>\n";
+    print "<a href=http://www.fishbase.org/Summary/speciesSummary.php?genusname=$genus&speciesname=$species>";
+    print "FishBase</a>";
+    print "</td></tr>\n";
+
+    ### obis
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/ObisLogo.gif>";
+    print "</td><td>\n";
+    print "<a href=http://www.iobis.org/OBISWEB/ObisControllerServlet?searchCategory=/AdvancedSearchServlet&genus=$genus&species=$species&Subspecies=&sciname=$genus%20$species>OBIS</a>";
+    print "</td></tr>\n";
+
+    ### ubio
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/ubioLogo.gif>";
+    print "</td><td>\n";
+    #print "<a href=http://www.ubio.org/SOAPbrowser/index.php?s=1&v=1&func=search&string=$genus+$species>uBIO</a>";
+    print "<a href=http://portal.ubio.org/index.php?tnsnav=lists&searchtype=web&map=&start=0&search=$genus+$species>uBIO</a>";
+    print "</td></tr>\n";
+
+    ### genbank
+    print "<tr><td align=right>\n";
+    print "<img src=http://biocode.berkeley.edu/graphics/species_page_logos/GenBanklogo.gif>";
+    print "</td><td>\n";
+    print "<a href=http://www.ncbi.nlm.nih.gov/entrez/query.fcgi?cmd=Search&db=Nucleotide&term=\"$genus+$species\">GenBank</a>";
+    print "</td></tr>\n";
+
+    print "</table>\n";
+
+    print "</blockquote>";
+
+    ### some things not done above:
+    #     - if species or genus is more than one word each, urls will break
+    #     - have to check for if fish = true before making link to fishbase query
+    #     - have to check for if ocean animal = true before making link to obis query
+    #     - have to deal with possible subspecies
+
+
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+
+    print "</td>\n";
+
+    print "<td>\n";
+    print "<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "</td>\n";
+
+    print "<td align=center valign=top>\n";
+    &print_one_biocode_species_pic("$genus $species $subspecies");
+
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+    print "</blockquote>\n";
+
+
+    &print_biocode_footer("species_search");
+
+
+}
+
+
+
+
+
+#make download file for any multiple record query.  Called from do_regular_query.
+
+sub make_biocode_species_download_file {
+
+    my ($type) = @_;
+    my ($fields) = "";
+    
+    $download_filename = "$tmp" . "." . "xls";
+    $download_short = "/tmp/".$download_filename;
+    $download_full = "/elib/sys/httpd/html/".$download_short;
+    
+    if ($type eq "simple") {
+
+    	foreach $f (@ucmp_simple_display_schema) {
+        	$fields .= "$f\t";
+    	}
+    	$fields =~ s/lat\tlng\tpic\t$//g;
+
+    } elsif ($type eq "loc") {
+    
+    	foreach $f (@ucmp_loc_display_schema) {
+            $fields .= "$f\t";
+        }
+    	$fields =~ s/\tloc_pic\t$//g;
+    
+    } else {
+    	$type = "advanced";
+    	$fields = $displaylist;
+        $fields =~ s/\,/\t/g;
+    }
+
+    if ($DEBUG) {
+   	$debug_msg .= "In make_ucmp_download_file. Type $type.";
+  	$debug_mag .= "Temp: |$tmp| DF: |$download_full|\n\n";
+    }
+           
+    open (DF, ">>$download_full") or die "Failed to open $download_full";
+   
+    print DF "$fields\n\n";
+   
+    open(FH, "$tmpdir/$script_name/$tmp")
+           || die "Can't open $tmp file for reading";
+    while(<FH>) {
+    	$foo = "$_";
+    	if ($type eq "simple") {
+     		if ($foo =~ /^(.*).*\t.*\t.*\t$/) {
+   	    	print DF "$1\n";
+       		}
+        } elsif ($type eq "loc") {
+        	if ($foo =~ /^(.*).*\t$/) {
+	   	    	print DF "$1\n";
+       		}
+        } else { 
+        	print DF $foo;
+        }
+        
+        
+    }
+    close(FH);
+    close(DF);
+}
+
+
+    
+sub download_biocode_species_file {
+    my ($filename) = @_;
+    my ($fields) = "";
+
+    foreach $f (@biocode_species_download_schema) {
+        $fields .= "$f\t";
+    }
+    $fields =~ s/photo\t$//g;  # delete photo field at end
+
+    print "Content-type: text/text\n\n";
+
+    print "$fields\n\n";
+
+    if($filename !~ /$one_up_tmp_file_location/) {
+        $filename = "$tmp_file_location/$script_name/$filename";
+    }
+    open(FH, "$filename")
+        || die "Can't open $filename file for reading";
+    while(<FH>) {
+        $foo = "$_";
+        if ($foo =~ /\t[0-9]*$/) {  # delete pic field
+            print "$`\t\n";
+        }
+    }
+}
+
+

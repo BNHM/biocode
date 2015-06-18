@@ -1,0 +1,321 @@
+<!--#include virtual="headers_footers/title.html" -->
+Query Collecting Events
+<!--#include virtual="headers_footers/head1.html" -->
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg border=0 height=70></a>
+</td>
+<td>
+<big><big>
+Query Collecting Events
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png border=0 height=70></a>
+</td>
+</tr>
+</table>
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+       <center>
+       <small>
+       <i>
+       Back to: <a href=http://biocode.berkeley.edu>Moorea Biocode Collections</a>
+       </small>
+       </i>
+       </center>
+       <i>
+A <i>Collecting Event</i> is a convenient way to describe
+the collection of one or more specimens at a distinct locality and time, 
+by a particular collector(s).
+  The specimens collected in a collecting event may or may not have
+been identified and catalogued.
+
+<p>
+Use this form to query Moorea Biocode's database of collecting events.
+Type all or part of a word, case unimportant, or choose a word from a drop-down list.
+If more than one field is completed, the search will look for records that meet
+both conditions.
+<br>
+See also: <a href=collectionevent.html>Add/Update a Collecting Event</a>
+<p>
+
+<form method=get action="/cgi/biocode_collect_event_query">
+<input type=hidden name=table value=biocode_collecting_event>
+<input type=hidden name=query_src value=biocode_querycollevents>
+
+          <table border="0" cellpadding="2" cellspacing="2">
+
+            <tr valign="middle"> 
+              <td align=right>Collector's Event ID</td>
+              <td>
+                <select name=rel-Coll_EventID_collector>
+                <option selected>equals
+                <option>contains
+                <option>begins with
+                </select>
+                </td>
+                <td>
+                <input name=where-Coll_EventID_collector>
+		<small><i> GP-Loc-862</i></small>
+              </td>
+            </tr>
+
+            <tr valign="middle"> 
+              <td align=right>Biocode Event ID</td>
+              <td>
+                <select name=rel-EventID>
+                <option selected>equals
+                <option>less than
+                <option>greater than
+                </select>
+                </td> 
+                <td><input name=where-EventID>
+		<small><i> 66</i></small>
+              </td>
+            </tr>
+
+
+            <tr valign="middle">
+              <td align=right>Other Event ID #1</td>
+              <td>
+                <select name=rel-OtherEventID>
+                <option selected>equals
+                <option>begins with
+                <option>contains
+                </select>
+                </td>
+                <td>
+                <input name=where-OtherEventID>
+
+              </td>
+            </tr>
+
+            <tr valign="middle">
+              <td align=right>Other Event ID #2</td>
+              <td>
+                <select name=rel-OtherEventID2>
+                <option selected>equals
+                <option>begins with
+                <option>contains
+                </select>
+                </td>
+                <td>
+                <input name=where-OtherEventID2>
+
+              </td>
+            </tr>
+
+            <tr>
+	      <td align=right>Project</td>
+              <td>
+
+              <select name="rel-ProjectCode">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td>
+              <input name="where-ProjectCode">
+              </td>
+            </tr>
+
+	    
+	    
+            <tr>
+	      <td align=right>Locality</td>
+              <td>
+
+              <select name="rel-Locality">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td>
+              <input name="where-Locality">
+	      <small><i> Vaiare lagoon</i></small>
+              </td>
+            </tr>
+
+
+	    <tr>
+	      <td align=right>Country</td>
+	      <td>
+	      </td>
+	      <td>
+	      <select name="where-Country">
+	      <option selected>any</option>
+	      <!--#include file="select_lists/country_sp.txt" -->
+              </select>
+              </td>
+	    </tr>
+
+
+	    <tr>
+              <td align=right>StateProvince</td>
+              <td>
+	      <select name="rel-StateProvince">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+	      </td>
+	      <td>
+              <input name="where-StateProvince">
+              </td>
+	       </tr>
+	    <tr>
+              <td align=right>Island</td>
+              <td>
+	      <select name="rel-Island">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+	      </td>
+	      <td>
+              <input name="where-Island">
+              <small><i> Tahiti</i></small>
+              </td>
+	       </tr>
+
+            <tr>
+              <td align=right>Collected by</td>
+              <td>
+	      <select name="rel-Collector_List">
+                <option selected>contains
+                </select>
+	      </td>
+	      <td>
+		<input name=where-Collector_List>
+		<small><i> meyer</i></small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right>Institution</td>
+              <td>
+              <select name="rel-HoldingInstitution">
+                <option selected>contains
+                </select>
+	      </td>
+	      <td>
+                <input name=where-HoldingInstitution>
+                <small><i> florida</i></small>
+              </td>
+            </tr>
+
+
+           <tr>
+              <td align=right>Tax Team</td>
+              <td>
+              </td>
+              <td>
+              <select name="where-TaxTeam">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/TaxTeam_collecting_event.txt" -->
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right>Taxonomy Notes</td>
+              <td>
+              <select name="rel-TaxonNotes">
+                <option selected>contains
+                </select>
+               </td><td>
+                <input name=where-TaxonNotes>
+                <small><i> Reynoldsia</i></small>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Entered By</td>
+              <td>
+              <select name="rel-EnteredBy">
+                <option selected>contains
+                </select>
+	      </td>
+	      <td>
+                <input name=where-EnteredBy>
+                <small><i> Curtis</i></small>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Submit Date</td>
+              <td>
+              <select name="rel-DateFirstEntered">
+                <option selected>equals
+                <option>before
+                <option>after
+                </select>
+	      </td>
+	      <td>
+              <input name="where-DateFirstEntered">
+	      <small><i> 2008-04-28</i></small>
+                </td>
+
+            </tr>
+
+
+            <tr>
+              <td align=right>Batch Num.</td>
+              <td>
+              <select name="rel-batch_id">
+                <option>contains
+		<option selected>equals
+                </select>
+	      </td>
+	      <td>
+                <input name=where-batch_id>
+                <small><i> 2008-05-20_14:48:09</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td><br></td>
+            </tr>
+
+	    <tr>
+	      <td>
+	      <b>Sort results by:</b>
+	      </td>
+	      <td colspan=2>
+
+              <small>
+	      <input type=radio checked name=orderby value="Coll_EventID_collector">Collector's Event ID&nbsp;
+	      <input type=radio checked name=orderby value="EventID">Biocode Event ID&nbsp;
+	      <input type=radio name=orderby value="StateProvince|County|Locality">State/Prov, County, Locality&nbsp;
+	      <input type=radio name=orderby value="Collector|YearCollected">Collector, Year&nbsp;
+              </small>
+	      </td>
+            </tr>
+
+
+	     <tr>
+              <td><br></td>
+              <td align=left colspan=2>
+	      <input type="submit" name="Search" value="Search">
+	      <input type="reset" name="Reset" value="Reset">
+	      </td>
+            </tr>
+
+
+
+	    </table>
+
+
+</form>
+
+
+
+<!--#include virtual="headers_footers/footer.html" -->

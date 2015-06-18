@@ -1,0 +1,74 @@
+<!--#include virtual="headers_footers/head1.html" -->
+
+Batch Upload Biocode Records
+
+<!--#include virtual="headers_footers/head2.html" -->
+
+       <!-- insert side bar links here -->
+
+<!--#include virtual="headers_footers/head3.html" -->
+
+
+
+
+<table cellpadding=5><tr><td>
+
+<b>Instructions to batch upload Excel records to Biocode: </b>
+<ol>
+<li>Download the <a href=/excel/BiocodeTemplate.xls>Biocode Excel Template</a> (note separate
+tabs for collecting events, specimen records, and tissues.)
+<li>Delete or move any columns as desired EXCEPT for required fields (in yellow).
+<li>Fill out the Excel sheet.
+<li>Use "Save As" to save the sheet as Text (Tab-delimited *.txt). <b>NOTE:</b> On Mac Save As "Text (Windows)".
+<li>Use the appropriate <b>Browse</b> button below to select the file to upload. 
+<li>Click Submit.
+</ol>
+<b>Note</b> Collecting events must be in the database before specimen records can
+be uploaded.  Specimen records must be in the database before tissue records can
+be uploaded. 
+
+<p>
+<FORM enctype=multipart/form-data ACTION=/cgi/biocode_batch_upload METHOD=post>
+<b><big>Collecting Events</big></b>  Any collector names on this file
+ must already be in the database.
+<a href=http://biocode.berkeley.edu/people_add_upd.html>Click here</a> to add
+a new collector.
+<table border width=100%>
+<td><INPUT size=70 type=file name=excel_collevents></td>
+</table>
+<INPUT TYPE=submit VALUE=Submit><INPUT TYPE=reset VALUE=Reset><p>
+</FORM>
+<p>
+<br>
+<FORM enctype=multipart/form-data ACTION=/cgi/biocode_batch_upload METHOD=post>
+<b><big>Specimen Records</big></b>  Each specimen record in this file
+ must have a collecting event number that is
+already in the database.
+
+<table border width=100%>
+<td><INPUT size=70 type=file name=excel_specimens></td>
+</table>
+<INPUT TYPE=submit VALUE=Submit><INPUT TYPE=reset VALUE=Reset><p>
+</FORM>
+
+<p>
+<br>
+<FORM enctype=multipart/form-data ACTION=/cgi/biocode_batch_upload METHOD=post>
+<b><big>Tissue Records</big></b> Each tissue record must have a specimen
+number that is already in the database. 
+<table border width=100%>
+<td><INPUT size=70 type=file name=excel_tissue></td>
+</table>
+<INPUT TYPE=submit VALUE=Submit><INPUT TYPE=reset VALUE=Reset><p>
+</FORM>
+<p>
+    </td>
+    </tr>
+    </table>
+
+<p>
+<br>
+<p>
+
+
+<!--#include virtual="headers_footers/footer.html" -->

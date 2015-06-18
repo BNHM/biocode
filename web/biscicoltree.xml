@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<root>
+  <specimen_has_photograph>
+  </specimen_has_photograph>
+ <specimen_has_video>
+  </specimen_has_video>
+  <specimen_has_tissue>
+    <tissue_has_extraction>
+      <extraction_has_chromatogram>
+      </extraction_has_chromatogram>
+    </tissue_has_extraction>
+  </specimen_has_tissue>
+</root>

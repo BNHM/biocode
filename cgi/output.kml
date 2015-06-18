@@ -1,0 +1,56 @@
+#!/usr/bin/perl
+# biocode_query Jan 2004  (using mysql)
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p";
+require "mybiocode_utils.p";
+require "myimg_utils.p";
+require "biocode_settings";
+
+&readParse(*input);
+&parse_input;
+
+&getKML;
+
+sub getKML{
+    print "Content-Type: application/vnd.google-earth.kml+xml kml; charset=utf8\n\n";
+    print '<?xml version="1.0" encoding=""UTF-8"?>';
+    print '<kml xmlns="http://www.opengis.net/kml/2.2">\n';
+
+    my $query="SELECT coll_eventid_collector,locality,decimallongitude,decimallatitude from $input{code}_biocode_collecting_event where decimallatitude is NOT NULL && decimallongitude is NOT NULL && (decimallatitude!=0 && decimallongitude!=0)";
+
+    my $content=&fma_get_multiple_records($query,"fma");
+
+    print $content.'</kml>';
+
+    exit;
+}
+
+sub fma_get_multiple_records {
+    my $strRet="";
+
+    my ($query, $database) = @_;
+    my ($count, $field, @row, $tmp);
+
+    $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_user","$g_db_pass");
+    if ( !defined $dbh ) { return "<Folder><name>database inaccessible. $DBI::errstr</name></Folder>\n"; }
+	$sth = $dbh->prepare( $query ) or return "<Folder><name>database inaccessible. $DBI::errstr</name></Folder>\n";
+    $sth->execute or return "<Folder><name>Error executing query: $query</name></Folder>\n";
+
+    foreach $clear (@row) { $clear = ""; }    # clear out array
+    $row_count = 0;
+    $strRet.="<Folder>\n";
+    while ( @row = $sth->fetchrow ) {
+        $count = 0;
+	$strRet.="<Placemark>\n";
+	$strRet.="<description><![CDATA[".@row[1]."]]></description>\n";
+	$strRet.="<name><![CDATA[".@row[0]."]]></name>\n";
+	$strRet.="<Point><coordinates>".@row[2].",".$row[3].",0</coordinates></Point>\n";
+	$strRet.="</Placemark>\n\n";
+    }
+    $strRet.="</Folder>\n";
+
+    $sth->finish;
+    $dbh->disconnect;
+    return $strRet;
+}

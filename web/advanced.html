@@ -1,0 +1,1219 @@
+<!--#include virtual="headers_footers/title.html" -->
+Moorea Biocode Specimens Advanced Database Query
+<!--#include virtual="headers_footers/head1.html" -->
+
+<table>
+<tr>
+<td>
+<a href=http://www.mooreabiocode.org/><img src=/images/biocode_new.jpg height=70 border=0></a>
+</td>
+<td>
+<big><big>
+Moorea Biocode Databases
+</td>
+<td>
+&nbsp;&nbsp;
+<a href=http://criobe.wordpress.com/><img src=/images/criobe_new.png height=70 border=0></a>
+</td>
+</tr>
+</table>
+
+
+
+<!--#include virtual="headers_footers/head2.html" -->
+       <!-- insert side bar links here -->
+<!--#include virtual="headers_footers/head3.html" -->
+
+       <center>
+       <small>
+       <i>
+       Back to: <a href=http://biocode.berkeley.edu>Moorea Biocode Database</a>
+       </small>
+       </i>
+       </center>
+       <p>
+
+See also: 
+&nbsp;&nbsp;<a href=query_specimens.html>Simple query form</a>
+&nbsp;&nbsp;<a href=specimen_update.html>Add/Update a Specimen Record</a>
+<p>
+
+Type all or part of a word, case unimportant, or choose a word from a drop-down list.
+If more than one field is completed, the search will look for records that meet
+both conditions.
+
+
+<form method=post action="/cgi/biocode_query">
+
+<input type=hidden name=table value=biocode>
+<input type=hidden name=stat value=ADVANCED>
+<input type=hidden name=query_src value=biocode_advanced>
+
+<input type=hidden name=jointables value="biocode_collecting_event,biocode,biocode_tissue">
+<input type=hidden name=joincolumns value="biocode.Coll_EventID = biocode_collecting_event.EventID">
+
+
+          <table border="0" cellpadding="1" cellspacing="1">
+
+
+	     <tr>
+              
+              <td align=left>
+	      <input type="submit" name="Search" value="Search">
+	      <input type="reset" name="Reset" value="Reset">
+	      </td>
+
+              <td>
+              &nbsp; &nbsp; &nbsp; &nbsp;
+              </td>
+
+              <td align=left>
+              <small>Number of Records<br>to Display Per Page:
+              <input type="text" size="4" name="max" value="100">
+              </td>
+
+              <td>
+              &nbsp; &nbsp; &nbsp; &nbsp;
+              </td>
+
+              <td>
+              <small>To view non-public records
+	      <br>Name:
+	      <select name=pub_access_name>
+	      <option selected>
+	      <!--#include virtual="select_lists/submitters.txt" -->
+	      </select>
+
+              <br>Password:
+	      <input type=password name=pub_access_pwd size=15>
+              </td>
+
+
+            </tr>
+          </table>
+
+          <table border="0" cellpadding="1" cellspacing="1">
+	    <tr>
+	      <td colspan=3><hr></td>
+            </tr>
+	    
+	    <tr>
+              <td colspan align=left><b>Specimen info:</b></td>
+            </tr>
+
+
+	    <tr>
+              <td align=right>Biocode No.</td>
+              <td>
+              <select name="rel-biocode.bnhm_id">
+                <option>equals
+                <option>begins with
+                <option selected>contains
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.bnhm_id">
+              <small>Example: <i>MBIO234</i></small>
+              </td>
+            </tr>
+
+
+	    <tr>
+              <td align=right>Collector's Specimen No.</td>
+              <td>
+              <select name="rel-biocode.Specimen_Num_Collector">
+                <option>begins with
+                <option selected>contains
+                <option>ends with
+                <option>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.Specimen_Num_Collector">
+	      <small>Example: <i>BMOO_01727</i></small>
+	      </td>
+            </tr>
+
+
+	    <tr>
+              <td align=right>Holding Institution</td>
+              <td>
+              <select name="rel-biocode.HoldingInstitution">
+                <option>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <select name="where-biocode.HoldingInstitution">
+	      <option selected>any</option>
+              <!--#include virtual="select_lists/holding_inst.txt" -->
+              </select>
+	      </td>
+            </tr>
+
+
+
+	    <tr>
+              <td align=right>Project Code</td>
+              <td>
+              <select name="rel-biocode.ProjectCode">
+                <option>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <select name="where-biocode.ProjectCode">
+	      <option selected>any</option>
+              <!--#include virtual="select_lists/projectcode.txt" -->
+              </select>
+	      </td>
+            </tr>
+
+	    <tr>
+              <td align=right>SubProject Code</td>
+              <td>
+              <select name="rel-biocode.SubProject">
+                <option>equals
+                <option>begins with
+                <option selected>contains
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.SubProject">
+              <small>Example: <i>SYMB</i></small>
+              </td>
+            </tr>
+
+            <tr>
+
+              <td align=right>Tax Team</td>
+              <td>
+
+              <select name="rel-biocode_collecting_event.TaxTeam">
+                <option selected>equals
+                </select>
+              </td>
+              <td>
+              <select name="where-biocode_collecting_event.TaxTeam">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/TaxTeam.txt" -->
+              </td>
+            </tr>
+
+
+
+            <tr>
+              <td colspan=3><hr></td>
+            </tr>
+
+
+            <tr>
+              <td colspan align=left><b>Taxonomy:</b></td>
+            </tr>
+
+
+            <tr>
+              <td align=right>Name Soup</td>
+              <td>
+              <select name="rel-biocode.namesoup">
+                <option selected>contains
+                </select>
+              </td>
+              <td><input name="where-biocode.namesoup">
+                <small>Matches any part of any taxonomy field</small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right>Morpho Species Match</td>
+              <td>
+              <select name="rel-biocode.MorphoSpecies_Match">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.MorphoSpecies_Match">
+                <small>Example: <i>Entalomatoid</i></small>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Morpho Species Description</td>
+              <td>
+              <select name="rel-biocode.MorphoSpecies_Description">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.MorphoSpecies_Description">
+                <small>Example: <i>green</i></small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right>Subspecific Epithet</td>
+              <td>
+              <select name="rel-biocode.SubspecificEpithet">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.SubspecificEpithet">
+                <small>Example: <i>ransoni</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right>Specific Epithet</td>
+              <td>
+	      <select name="rel-biocode.SpecificEpithet">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+		</select>
+              </td>
+              <td><input name="where-biocode.SpecificEpithet">
+		<small>Example: <i>trimaculatus</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right>Genus</td>
+              <td>
+	      <select name="rel-biocode.Genus">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+		</select>
+              </td>
+              <td><input name="where-biocode.Genus">
+		<small>Example: <i>alpheus</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+	      <td align=right>Sci. Name</td>
+              <td>
+		<select name=rel-biocode.ScientificName>
+		<option selected>contains
+		<option>begins with
+		<option>equals
+		</select>
+              </td>
+	      <td><input name=where-biocode.ScientificName>
+		<small>Example: <i>aphis ceanothi</i></small>
+              </td>
+            </tr>
+	    <tr>
+              <td align=right>Common Name</td>
+              <td>
+	      <select name="rel-biocode.ColloquialName">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+		</select>
+              </td>
+              <td><input name="where-biocode.ColloquialName">
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right> Subtribe</td>
+              <td>
+              <select name="rel-biocode.Subtribe">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.Subtribe">
+	      <small>Example: <i>Drosophilina</i></small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right> Tribe</td>
+              <td>
+              <select name="rel-biocode.Tribe">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.Tribe">
+              </td>
+            </tr>
+
+
+
+	    <tr>
+              <td align=right> Subfamily</td>
+              <td>
+	      <select name="rel-biocode.Subfamily">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.Subfamily">
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Family</td>
+              <td>
+	      <select name="rel-biocode.Family">
+                <option selected>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.Family">
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Superfamily</td>
+              <td>
+	      <select name="rel-biocode.Superfamily">
+	        <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+              <td><input name="where-biocode.Superfamily">
+	      <small>Example: <i>Pyraloidea</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Infraorder</td>
+              <td><select name="rel-biocode.Infraorder">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+	      <td>
+              <input name="where-biocode.Infraorder">
+	      <small>Example: <i></i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Suborder</td>
+              <td><select name="rel-biocode.Suborder">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+	      <td>
+              <input name="where-biocode.Suborder">
+	      <small>Example: <i>Glossata</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Order</td>
+              <td><select name="rel-biocode.Ordr">
+                <option selected>equals
+                </select>
+              </td>
+	      <td>
+              <select name="where-biocode.Ordr">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/order_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Superorder</td>
+              <td><select name="rel-biocode.Superorder">
+                <option selected>equals
+                </select>
+              </td>
+	      <td>
+              <select name="where-biocode.Superorder">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/superorder_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Infraclass</td>
+              <td><select name="rel-biocode.Infraclass">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+	      <td>
+              <select name="where-biocode.Infraclass">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/infraclass_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Subclass</td>
+              <td><select name="rel-biocode.Subclass">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+              </td>
+	      <td>
+              <select name="where-biocode.Subclass">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/subclass_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+
+	    <tr>
+              <td align=right> Class</td>
+              <td><select name="rel-biocode.Class">
+	      <option selected>equals
+                </select>
+              </td>
+              <td>
+              <select name="where-biocode.Class">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/class_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Superclass</td>
+              <td><select name="rel-biocode.Superclass">
+	      <option selected>equals
+                </select>
+              </td>
+              <td>
+              <select name="where-biocode.Superclass">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/superclass_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Subphylum</td>
+              <td><select name="rel-biocode.Subphylum">
+	      <option selected>equals
+                </select>
+              </td>
+              <td>
+              <select name="where-biocode.Subphylum">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/subphylum_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> Phylum</td>
+              <td><select name="rel-biocode.Phylum">
+	      <option selected>equals
+	      <option>does not equal
+                </select>
+              </td>
+              <td>
+              <select name="where-biocode.Phylum">
+              <option selected>any</option>
+              <!--#include virtual="select_lists/phylum_sp.txt" -->
+              </select>
+              </td>
+            </tr>
+
+	    <tr>
+              
+	      <td colspan=3><hr></td>
+            </tr>
+
+            <tr>
+              <td colspan=3 align=left><b>Locality: </b></td>
+            </tr>
+
+            <tr>
+              <td align=right>Biocode Event ID #</td>
+              <td>
+              <select name="rel-biocode_collecting_event.EventID">
+                <option selected>equals
+                <option>greater than
+                <option>less than
+
+                </select>
+                </td>
+                <td>
+                <input name=where-biocode_collecting_event.EventID>
+                <small><i>Example: 4</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right>Collector's Event ID #</td>
+              <td>
+              <select name="rel-biocode_collecting_event.Coll_EventID_collector">
+                <option selected>equals
+                <option>contains
+                <option>begins with
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode_collecting_event.Coll_EventID_collector">
+	      <small>Example: <i>GP-Loc-896</i></small>
+	      </td>
+            </tr>
+
+
+	    
+
+	    <tr>
+	      <td align=right>Collecting Event Habitat</td>
+              <td>
+              <select name="rel-biocode_collecting_event.Habitat">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+		</td>
+              <td>
+              <input name="where-biocode_collecting_event.Habitat">
+	      <small>Example: <i>reef crest</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+	      <td align=right>Specimen Habitat</td>
+              <td>
+              <select name="rel-biocode.specimen_Habitat">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+		</td>
+              <td>
+              <input name="where-biocode.specimen_Habitat">
+	      <small>Example: <i>reef crest</i></small>
+              </td>
+            </tr>
+
+
+
+	    <tr>
+	      <td align=right>Collecting Event MicroHabitat</td>
+              <td>
+              <select name="rel-biocode_collecting_event.MicroHabitat">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+		</td>
+              <td>
+              <input name="where-biocode_collecting_event.MicroHabitat">
+	      <small>Example: <i>Hibiscus</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+	      <td align=right>Specimen MicroHabitat</td>
+              <td>
+              <select name="rel-biocode.specimen_MicroHabitat">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+		</td>
+              <td>
+              <input name="where-biocode.specimen_MicroHabitat">
+	      <small>Example: <i>under rubble</i></small>
+              </td>
+            </tr>
+
+
+
+
+	    <tr>
+	      <td align=right>Associated Taxon (Host)</td>
+              <td>
+              <select name="rel-biocode.Associated_Taxon">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+		</td>
+              <td>
+              <input name="where-biocode.Associated_Taxon">
+	      <small>Example: <i>tree fern</i></small>
+              </td>
+            </tr>
+
+	    <tr>
+	      <td align=right>Locality</td>
+              <td>
+              <select name="rel-biocode_collecting_event.Locality">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>
+		</td>
+              <td>
+              <input name="where-biocode_collecting_event.Locality">
+	      <small>Example: <i>Vaiare lagoon</i></small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right> County</td>
+	      <td>
+              <select name="rel-biocode_collecting_event.County">
+              <option selected>equals
+                </select>
+                </td>
+              <td>
+	      <select name=where-biocode_collecting_event.County>
+	      <option selected>any</option>
+	      <!--#include virtual="select_lists/county_sp.txt" -->
+	      </select>
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right> State/Province</td>
+              <td>
+	      <select name="rel-biocode_collecting_event.StateProvince">
+              <option selected>equals
+                </select>
+                </td>
+              <td>
+	      <select name=where-biocode_collecting_event.StateProvince>
+	      <option selected>any</option>
+	      <!--#include virtual="select_lists/state_prov_sp.txt" -->
+	      </select>
+              </td>
+	       </tr>
+
+
+	    <tr>
+	      <td align=right> Country</td>
+	      <td>
+
+              <select name="rel-biocode_collecting_event.Country">
+	      <option selected>equals
+                </select>
+                </td>
+	      <td>
+	      <select name="where-biocode_collecting_event.Country">
+	      <option selected>any</option>
+	      <!--#include virtual="select_lists/country_sp.txt" -->
+              </select>
+              </td>
+	    </tr>
+
+
+	    <tr>
+	      <td align=right> Continent/Ocean</td>
+	      <td>
+              <select name="rel-biocode_collecting_event.ContinentOcean">
+	      <option selected>equals
+                </select>
+                </td>
+	      <td>
+	      <select name="where-biocode_collecting_event.ContinentOcean">
+	      <option selected>any</option>
+	      <!--#include virtual="select_lists/cont_ocean_sp.txt" -->
+              </select>
+              </td>
+	    </tr>
+
+
+	    <tr>
+	      <td align=right> Island</td>
+	      <td>
+              <select name="rel-biocode_collecting_event.Island">
+	      <option selected>equals
+                </select>
+                </td>
+	      <td>
+	      <select name="where-biocode_collecting_event.Island">
+	      <option selected>any</option>
+	      <!--#include virtual="select_lists/island_sp.txt" -->
+              </select>
+              </td>
+	    </tr>
+
+
+	    <tr>
+	      <td align=right> IslandGroup</td>
+	      <td>
+              <select name="rel-biocode_collecting_event.IslandGroup">
+	      <option selected>equals
+                </select>
+                </td>
+	      <td>
+	      <select name="where-biocode_collecting_event.IslandGroup">
+	      <option selected>any</option>
+	      <!--#include virtual="select_lists/islandgroup_sp.txt" -->
+              </select>
+              </td>
+	    </tr>
+
+	    <tr>
+	      <td align=right> Min in Elevation in Meters</td>
+	      <td>
+              <select name="rel-biocode_collecting_event.MinElevationMeters">
+                <option>equals
+                <option selected>greater than
+                <option>less than
+                </select>
+                </td>
+	      <td>
+              <input name="where-biocode_collecting_event.MinElevationMeters">
+              </td>
+	    </tr>
+
+	    <tr>
+	      <td align=right> Max Elevation in Meters</td>
+	      <td>
+              <select name="rel-biocode_collecting_event.MaxElevationMeters">
+                <option>equals
+                <option>greater than
+                <option selected>less than
+                </select>
+                </td>
+	      <td>
+              <input name="where-biocode_collecting_event.MaxElevationMeters">
+              </td>
+	    </tr>
+
+
+
+
+
+
+	    <tr>
+              
+	      <td colspan=3><hr></td>
+            </tr>
+
+
+            <tr>
+              <td colspan=3 align=left><b>Collector: </b></td>
+            </tr>
+
+
+
+
+	    <tr>
+              <td align=right>Collected by</td>
+              <td>
+
+	      <select name="rel-biocode_collecting_event.Collector_List">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>&nbsp;
+		</td>
+		<td>
+              <input name="where-biocode_collecting_event.Collector_List">
+		<small>Example: <i>Meyer</i></small>
+              </td>
+            </tr>
+
+	     <tr>
+              <td align=right>Year</td>
+              <td>
+              <select name="rel-biocode_collecting_event.YearCollected">
+                <option>before
+                <option selected>equals
+                <option>after
+                </select>
+		</td>
+		<td><input size=4 name="where-biocode_collecting_event.YearCollected">
+
+              </td>
+            </tr>
+
+	     <tr>
+              <td align=right>Month</td>
+              <td>
+              <select name="rel-biocode_collecting_event.MonthCollected">
+                <option>before
+                <option selected>equals
+                <option>after
+                </select>
+		</td>
+		<td><input size=4 name="where-biocode_collecting_event.MonthCollected">
+
+              </td>
+            </tr>
+
+	     <tr>
+              <td align=right>Day</td>
+              <td>
+              <select name="rel-biocode_collecting_event.DayCollected">
+                <option>before
+                <option selected>equals
+                <option>after
+                </select>
+		</td>
+		<td><input size=4 name="where-biocode_collecting_event.DayCollected">
+
+              </td>
+            </tr>
+
+
+	    <tr>
+              
+	      <td colspan=3><hr></td>
+            </tr>
+
+            <tr>
+              <td colspan=3 align=left><b>Tissues: </b></td>
+            </tr>
+
+
+	    <tr>
+	      <td align=right> Plate name</td>
+	      <td>
+              <select name="rel-biocode_tissue.format_name96">
+	      <option selected>equals
+                </select>
+                </td>
+	      <td>
+	      <select name="where-biocode_tissue.format_name96">
+	      <option selected>any</option>
+	      <!--#include virtual="select_lists/format_name96.txt" -->
+              </select>
+            </td>
+            </tr>
+
+
+
+	    <tr>
+	      <td align=right>Molecular ID</td>
+	      <td>
+              <select name="rel-biocode_tissue.molecular_id">
+	      <option>begins with
+	      <option selected>contains
+	      <option>equals
+                </select>
+                </td>
+	      <td>
+              <input name="where-biocode_tissue.molecular_id">
+              </select>
+            </td>
+            </tr>
+
+
+
+
+
+	    <tr>
+              
+	      <td colspan=3><hr></td>
+            </tr>
+
+
+
+
+
+
+            <tr>
+              <td colspan=3 align=left><b>Identification: </b></td>
+            </tr>
+	    <tr>
+              <td align=right>Identified by</td>
+              <td>
+
+	      <select name="rel-biocode.IdentifiedBy">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>&nbsp;
+		</td>
+		<td>
+              <input name="where-biocode.IdentifiedBy">
+              </td>
+            </tr>
+
+	     <tr>
+              <td align=right>Year</td>
+              <td>
+              <select name="rel-biocode.YearIdentified">
+                <option>before
+                <option selected>equals
+                <option>after
+                </select>
+		</td>
+		<td><input size=4 name="where-biocode.YearIdentified">
+              </td>
+            </tr>
+
+	    <tr>
+              <td align=right>Previous ID</td>
+              <td>
+
+              <select name="rel-biocode.PreviousID">
+                <option selected>contains
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.PreviousID">
+	      <small>Example: <i>Tricorythodes</i></small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td colspan=3><hr></td>
+            </tr>
+
+            <tr>
+              <td colspan=3 align=left><b>About the specimen: </b></td>
+            </tr>
+	    
+	    <tr>
+              <td align=right>Sex/Caste</td>
+              <td>
+              <select name="rel-biocode.SexCaste">
+                <option selected>equals
+                </select>&nbsp;
+                </td>
+
+                <td>
+              <select name="where-biocode.SexCaste">
+	      <option selected>any</option>
+              <!--#include virtual="select_lists/sex.txt" -->
+              </select>
+              </td>
+            </tr>
+	    
+	    <tr>
+              <td align=right>Life Stage</td>
+              <td>
+              <select name="rel-biocode.LifeStage">
+                <option selected>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <select name="where-biocode.LifeStage">
+	      <option selected>any</option>
+              <!--#include virtual="select_lists/stage.txt" -->
+              </select>
+              </td>
+            </tr>
+	    
+
+
+	    <tr>
+              <td align=right>Parts</td>
+              <td>
+              <select name="rel-biocode.Parts">
+                <option selected>contains
+		<option>begins with
+		<option>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.Parts">
+              </td>
+            </tr>
+	    
+	    <tr>
+              <td align=right>COI Sequence Status</td>
+              <td>
+              <select name="rel-biocode.DNASequenceNo">
+                <option selected>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <select name="where-biocode.DNASequenceNo">
+	      <option selected>any</option>
+              <option>F</option>
+              <option>P</option>
+              <option>Q</option>
+              </select>
+              </td>
+            </tr>
+	    
+
+
+            <tr>
+              <td colspan=3><hr></td>
+            </tr>
+
+            <tr>
+              <td colspan=3 align=left><b>Administrative Info: </b></td>
+            </tr>
+
+            <tr>
+              <td align=right>Notes</td>
+              <td>
+              <select name="rel-biocode.Notes">
+                <option selected>contains
+                <option>begins with
+                <option>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <input name="where-biocode.Notes">
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Batch Num.</td>
+              <td>
+              <select name="rel-biocode.batch_id">
+                <option>contains
+		<option selected>equals
+                </select>&nbsp;
+		</td>
+                <td>
+                <input name=where-biocode.batch_id>
+                <small><i>Example: 2008-05-20_21:00:41</i></small>
+              </td>
+            </tr>
+
+
+            <tr>
+              <td align=right>Submitted By</td>
+              <td>
+              <select name="rel-biocode.EnteredBy">
+                <option selected>equals
+                </select>&nbsp;
+                </td>
+                <td>
+              <select name="where-biocode.EnteredBy">
+	      <option selected>any</option>
+              <!--#include virtual="select_lists/submitters.txt" -->
+              </select>
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Submit Date</td>
+              <td>
+              <select name="rel-biocode.DateFirstEntered">
+                <option selected>equals
+                <option>before
+                <option>after
+                </select>
+                </td>
+                <td>
+              <input name="where-biocode.DateFirstEntered">
+              </td>
+            </tr>
+
+            <tr>
+              <td align=right>Date Last Modified</td>
+              <td>
+              <select name="rel-biocode.DateLastModified">
+                <option selected>equals
+                <option>before
+                <option>after
+                </select>
+                </td>
+                <td>
+              <input name="where-biocode.DateLastModified">
+              </td>
+            </tr>
+
+	    <tr>
+	      <td colspan=3><hr></td>
+            </tr>
+
+
+	    <tr>
+	      <td>
+	      <b>Sort results by:</b>
+	      </td>
+	      <td colspan=3>
+	      <input type=radio checked name=orderby value="Family|ScientificName">Family, Scientific Name&nbsp;
+              <br>
+	      <input type=radio checked name=orderby value="Ordr|Family|ScientificName">Order, Family, Scientific Name&nbsp;
+              <br>
+	      <input type=radio checked name=orderby value="Class|Ordr|Family|ScientificName">Class, Order, Family, Scientific Name&nbsp;
+              <br>
+	      <input type=radio name=orderby value="Phylum|Class|Ordr|Family|ScientificName">Phylum, Class, Order, Family, Scientific Name&nbsp;
+              <br>
+	      <input type=radio name=orderby value="Kingdom|Phylum|Class|Ordr|Family|ScientificName">Kingdom, Phylum, Class, Order, Family, Scientific Name&nbsp;
+              <br>
+	      <input type=radio name=orderby value="StateProvince|County|Locality">State/Prov, County, Locality&nbsp;
+              <br>
+	      <input type=radio name=orderby value="Collector|YearCollected">Collector, Year&nbsp;
+              <br>
+	      <input type=radio checked name=orderby value="Specimen_Num_Collector">Collector Specimen Number&nbsp;
+              <br>
+	      <input type=radio checked name=orderby value="CatalogNumberNumeric">MBIO number&nbsp;
+	      </td>
+            </tr>
+
+	    <tr>
+	      <td colspan=3><hr></td>
+            </tr>
+
+	    <tr>
+	      <td align=right>
+	      <b>View:</b>
+	      </td>
+	      <td colspan=3>
+	      <input type=checkbox name=where-biocode.pic value=1>only records with photos &nbsp;
+	      <input type=checkbox name=where-biocode.pic value=0>only records without photos &nbsp;
+	      <input type=checkbox name=where-biocode.Tissue value=0>only records with tissues &nbsp;
+	      <input type=hidden name=rel-biocode.Tissue value=gt>
+	      <input type=checkbox name=only value=species>only unique species list &nbsp;
+
+            </tr>
+            <tr>
+	      <td align=right>
+              <b>Make download file:</b>
+              </td>
+              <td colspan=2>
+              <input type=checkbox name=downloadfile value=1>
+              &nbsp;
+              &nbsp;
+              &nbsp;
+              format:
+              <select name="downloadformat">
+                <option selected>all fields (tab delimited)
+                <option>MVZ fields (tab delimited)
+                <option>Biocode Excel Bulk Upload
+                <option>SI-EMU (Excel)
+                </select>
+
+	      </td>
+
+	      </td>
+            </tr>
+
+
+
+	    <tr>
+	      <td colspan=3><hr></td>
+            </tr>
+
+	     <tr>
+              
+              <td align=left colspan=2>
+	      <input type="submit" name="Search" value="Search">
+	      <input type="reset" name="Reset" value="Reset">
+	      </td>
+            </tr>
+
+	    </table>
+</form>
+
+
+
+<!--#include virtual="headers_footers/footer.html" -->

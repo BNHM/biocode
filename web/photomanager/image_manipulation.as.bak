@@ -1,0 +1,47 @@
+// image manipulation
+private var original:BitmapData;
+private static const MAX_WIDTH:uint = 2880;
+private static var MAX_HEIGHT:uint = 2880;
+
+
+private function loadImage(url:String):void {
+ var pictLdr:Loader = new Loader();
+var pictURL:String = url;
+var pictURLReq:URLRequest = new URLRequest(pictURL);
+pictLdr.load(pictURLReq);
+photoMatcher.addChild(pictLdr);
+
+              //image1.source += url;
+//    var request:URLRequest = new URLRequest(url);
+ //   var imageLoader:Loader = new Loader();
+  //  imageLoader.contentLoaderInfo.addEventListener(Event.COMPLETE, image_completeHandler);
+   // // add other listeners here
+    //imageLoader.load(request)
+}
+            
+private function image_completeHandler(event:Event):void {
+    var bmd:BitmapData = Bitmap(event.currentTarget.content).bitmapData;
+                
+    var originalWidth:Number = bmd.width;
+    var originalHeight:Number = bmd.height;
+    var newWidth:Number = originalWidth;
+    var newHeight:Number = originalHeight;
+            
+    var m:Matrix = new Matrix();
+            
+    var sx:Number = 1;
+    var sy:Number = 1;
+ 
+    if (originalWidth > MAX_WIDTH || originalHeight > MAX_HEIGHT) {
+        sx =  MAX_WIDTH / originalWidth;
+        sy = MAX_HEIGHT / originalHeight;
+        var scale:Number = Math.min(sx, sy);
+        newWidth = originalWidth * scale;
+        newHeight = originalHeight * scale; 
+    }
+    m.scale(scale, scale);
+    original = new BitmapData( newWidth, newHeight); 
+                
+    original.draw(bmd, m);
+                
+}

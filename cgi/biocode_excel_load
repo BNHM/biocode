@@ -1,0 +1,430 @@
+#!/usr/bin/perl
+# biocode_excel_upload -  Joyce Gross -  March 2009
+use Time::HiRes qw[gettimeofday tv_interval];
+our $start = gettimeofday()*1000;
+
+# parse and validate Excel file of data (coll, spec, tiss)
+
+use biocode_excel;
+use Data::Dumper;
+use CGI;
+
+require "biocode_excel_datacheck";
+require "biocode_excel_datacheck_jd";
+require "myquery_utils.p";
+require "myschema.p";
+require "utils.p";
+#require "cgi-lib.pl";   # deals with multipart form data
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+######################################################
+
+# JBD NOTE: MOVED ARRAY SPECS TO MYBIOCODE_UTILS
+
+###########################################
+
+use constant UPLOAD_DIR      => "/data1/tmp/Weekly";
+use constant BUFFER_SIZE     => 16_384;
+use constant MAX_FILE_SIZE   => 25 * 1_048_576;        # Limit each upload to 25 MB
+use constant MAX_DIR_SIZE    => 100 * 1_048_576;  # Limit total uploads to 100 MB
+use constant MAX_OPEN_TRIES  => 100;
+
+$CGI::DISABLE_UPLOADS = 0;
+$CGI::POST_MAX        = MAX_FILE_SIZE;
+
+####### Code Starts Here ############
+
+&readParseNoOut(*input);
+print "content-type: text/html\n\n";
+my $s;
+my $q = new CGI;
+my $error_msg="";
+my $warning_msg="";
+my $excel_file,$collevent_sheet_exists, $specimen_sheet_exists, $projectcode;
+
+if (!$input{hashload}) {
+    $error_msg="";
+    $warning_msg="";
+    ($excel_file, $collevent_sheet_exists, $specimen_sheet_exists, $projectcode,$version) = &load_form_data;
+    $s = biocode_excel->new("$excel_file");
+
+	print "<font face='Courier New'>";
+
+    ###############################
+    # Initial Spreadsheet Messages
+    ###############################
+    if ($s->getError()) {
+        print "One or more errors found:<p>";
+        print $s->getError();
+        print "<br>Check to make sure you loaded an Excel file, and that it has data in it.<br>";
+        exit;
+    }
+
+
+    ###############################
+    # Check worksheet names
+    ###############################
+    $error_msg .= &check_worksheet_names($s, $collevent_sheet_exists, $specimen_sheet_exists);
+
+    if($error_msg) {
+        print "$error_msg<p>";
+        exit;
+    }
+    ###############################
+    # Check Data Itself
+    ###############################
+    ($error_msg,$warning_msg)=&check_data;
+
+    if($warning_msg && !$error_msg) {
+        print "You have received some warning messages from the validation component:<p>";
+        print "$warning_msg";
+        print "<p>";
+        # Store Hash into file on server and offer a reference to it
+        use Storable;
+        $file = &make_tmp_uploadedfile_name("hash");
+        store $s, $file;
+        print "</ul><p><b>Your Data is not yet loaded!</b> Please read the warnings above and if you wish to continue then click the following link:<p><a href='http://biocode.berkeley.edu/cgi/biocode_excel_load?hashload=$file&collevent_sheet_exists=$collevent_sheet_exists&specimen_sheet_exists=$specimen_sheet_exists&projectcode=$projectcode&version=$version' target='javabrowser'><b>Continue Loading Data</b></a>";
+        exit;
+    } 
+
+    if($error_msg) {
+        print "You have received one or more errors for the worksheet(s) you are loading.";
+        print "<br>You can simply correct the problem on the spreadsheet, re-save it, then re-load this page.";
+        print "<br>It may be necessary to repeat this step several times to catch all errors.";
+    	if ($q->param( "version" ) ne "") {
+        	$error_msg.="<br>Loaded with bioValidator version ". $q->param( "version" )."\n";
+        	print "<br><i>Loaded with bioValidator version ". $q->param( "version" )."</i>";
+    	}  else {
+        	$error_msg.="<br>Loaded with online loader or bioValidator version 0.6\n";
+        	print "<br>Loaded with online loader or bioValidator version 0.6\n";
+    	}
+        print "<p>";
+        if ($warning_msg) {
+            print "Warnings:<br>";
+            print $warning_msg;
+            print "<p>";
+        }
+        print "Errors:<br>";
+        print "$error_msg<p>";
+        &send_email($error_msg,"errors");
+        exit;
+    } else {
+        ###############################
+        # Insert and Update Data (after passed all the above)
+        ###############################
+        print "Data Validation passed! Now performing insert/update of data (this may take some time for large spreadsheets, please be patient)";
+        &insert_and_update($collevent_sheet_exists, $specimen_sheet_exists, $projectcode);
+    }
+} else {
+    $s=retrieve($input{hashload}) or die('Unable to find hash file on server.  This may happen if your session has expired! Please retry process or notify administrator');
+    &insert_and_update($input{collevent_sheet_exists}, $input{specimen_sheet_exists}, $input{projectcode});
+} 
+
+print "</font>"; 
+
+######################################################################
+
+sub load_form_data {
+    my $fileupload = "";
+    my $collevent_sheet_exists = "";
+    my $specimen_sheet_exists = "";
+
+    $fileupload = $q->param( "excel_specimens" );
+    $collevent_sheet_exists = $q->param( "collecting_event" );
+
+    $specimen_sheet_exists = $q->param( "specimen" );
+    $projectcode = $q->param( "projectcode" );
+    $version = $q->param( "version" );
+
+    if(-z $fileupload) {
+        $fileupload = "";
+    }
+
+    if($fileupload) {
+
+        ############################
+        # Upload the file:
+        ############################
+
+        $q->cgi_error and error( $q, "Error transferring file: " . $q->cgi_error );
+
+        $file = $q->param( "excel_specimens" ) || error( $q, "No file received." );
+        $filename = $file;  # save the original name
+        $uploadedfile = &make_tmp_uploadedfile_name($filename);
+
+        open(OUTPUT, ">$uploadedfile") or die "Can't open upload file ";
+
+        while(<$file>) {
+            print OUTPUT $_;
+        }
+
+        close OUTPUT;
+
+        ############################
+        # End file upload.
+        ############################
+
+    }
+
+    return ($uploadedfile, $collevent_sheet_exists, $specimen_sheet_exists, $projectcode);
+
+}
+
+sub make_tmp_uploadedfile_name {
+
+    # This gets the filename of an uploaded file, changes illegal UNIX filename characters
+    # to legal UNIX filename characters, prepends a randomly generated number in front of it
+    # (to get a unique filename), and prepends the pathname of the upload directory
+    # in front of the filename.
+
+    my($fname) = @_;
+    my $uploadedfile, $tmp;
+
+    # Make temporary filename (uploadedfile).
+
+    $fname =~ s/([^\w.-])/_/g;
+    $fname =~ s/^[-.]+//g;
+
+    $tmp = rand(1000000);
+    $tmp = sprintf("%d",$tmp);
+
+    $uploadedfile =  $tmp . "___" . $fname;
+
+    $uploadedfile = UPLOAD_DIR . "/" . "$uploadedfile";
+
+    while(-e $uploadedfile) {
+        $tmp = rand(1000000);
+        $tmp = sprintf("%d",$tmp);
+        $uploadedfile =  $tmp . "___" . $fname;
+        $uploadedfile = UPLOAD_DIR . "/" . "$uploadedfile";
+    }
+
+    return $uploadedfile;
+}
+
+
+#############################################################################
+
+# need to create for specimen:  seq_num (guid), DateFirstEntered, DateLastModified, ModifiedBy, batch_id
+# fill in taxonomy 
+
+# need to create for collevent: EventID, seq_num (guid), DateFirstEntered, DateLastModified, ModifiedBy, batch_id
+
+
+
+
+####### Code Starts Here ############
+
+sub check_data {
+    my $localError_msg="";
+    my $localError_msg_taxonomy="";
+    my $localError_msg_verbatim_latlong="";
+    my $localWarning_msg="";
+    if($collevent_sheet_exists) {
+        if ($collevent_sheet_exists ne "false") {
+        $localError_msg .= &check_collevent_header($s->getHeader("Collecting_Events"));
+        $localWarning_msg .= &check_collevent_allowed_fields($s->getHeader("Collecting_Events"));
+        $localError_msg .= &check_collevent_required_fields($s);
+        $localError_msg .= &check_for_duplicate_Coll_EventID_collector_values($s);
+        $localError_msg .= &check_collector_name_columns($s, "Collecting_Events");
+        $localError_msg .= &check_enteredby_columns($s, "Collecting_Events");
+        $localError_msg .= &check_date_collected($s, "Collecting_Events");
+        $localError_msg .= &check_holdinginstitution_columns($s, "Collecting_Events");
+        $localError_msg .= &check_taxteam_columns($s, "Collecting_Events");
+        $localError_msg .= &check_geography_columns($s, "Collecting_Events");
+
+        ($s, $localError_msg_verbtim_latlong) = &check_verbatim_latlong_columns($s, "Collecting_Events");
+        $localError_msg .= $localError_msg_verbatim_latlong;
+
+        if(!$localError_msg) {
+            $s = &fill_Collector_List_values($s);
+        }
+        }
+    }
+    
+    if($specimen_sheet_exists) {
+        if ($specimen ne "false") {
+        # following only generates warnings
+        $localWarning_msg .= &checkUniquenessofSpecimen_num_Collector($s);
+        $localError_msg .= &check_specimen_header($s->getHeader("Specimens"));
+        $localWarning_msg .= &check_specimen_allowed_fields($s->getHeader("Specimens"));
+        $localError_msg .= &check_specimen_required_fields($s);
+        $localError_msg .= &check_for_duplicate_Specimen_Num_Collector_values($s);
+        $localError_msg .= &check_for_valid_Specimen_Num_Collector_values($s);
+        $localError_msg .= &check_enteredby_columns($s, "Specimens");
+        $localError_msg .= &check_date_collected($s, "Specimens");
+        $localError_msg .= &check_geography_columns($s, "Specimens");
+
+        ($s, $localError_msg_verbatim_latlong) = &check_verbatim_latlong_columns($s, "Specimens");
+        $localError_msg .= $localError_msg_verbatim_latlong;
+
+        $localError_msg .= &check_holdinginstitution_columns($s, "Specimens");
+        $localError_msg .= &check_phyla($s);
+        $localError_msg .= &check_date_identified($s);
+
+        ($s, $localError_msg_taxonomy) = &check_taxonomy($s);
+        $localError_msg .= $localError_msg_taxonomy;
+
+        $localError_msg .= &check_other_specimen_columns($s, "Specimens");
+        $localError_msg .= &check_collecting_event_exists($s,"$collevent_sheet_exists");
+        $localError_msg .= &check_tissue_columns($s,$projectcode);
+        } 
+    }
+
+    my @retArray = ($localError_msg,$localWarning_msg);
+    #my @retArray = ("error!","");
+    return @retArray;
+}
+
+sub insert_and_update {
+    ($collevent_sheet_exists, $specimen_sheet_exists, $projectcode) = @_;
+    my ($bad_msg, $EnteredBy, $insertCnt, $updateCnt, $batch_id);
+    my $msgEmail = "";
+    $batch_id = strip(`date '+%Y-%m-%d_%T'`);
+
+    #############################
+    # Collecitng Event insert/update
+    #############################
+    if ($collevent_sheet_exists eq "true") {
+        print "<p><b>Collecting Event insert/update</b></br>";
+        ($msg, $insertCnt, $updateCnt, $EnteredBy) = run_create_collecting_event($s, $batch_id, $projectcode);
+        $bad_msg .= $msg;
+        if ($bad_msg) {
+            print "<li>Error .... $bad_msg</li>";
+        } else {
+            print "<li>Successfully updated/inserted Collecting Events</li>";
+        } 
+        $msgWeb.=&formatWebMessage($EnteredBy, "Collecting_Events", $bad_msg, $insertCnt, $updateCnt, $batch_id);
+        $msgEmail.=&formatEmailMessage($EnteredBy, "Collecting_Events", $bad_msg, $insertCnt, $updateCnt, $batch_id);
+    }
+    #############################
+    # Specimen insert/update
+    #############################
+    if ($specimen_sheet_exists eq "true") {
+        print "<p><b>Specimen insert/update</b></br>";
+        ($msg, $insertCnt, $updateCnt, $EnteredBy) = run_create_specimen($s, $batch_id);
+        $bad_msg .= $msg;
+        $msgWeb.=&formatWebMessage($EnteredBy, "Specimens", $bad_msg, $insertCnt, $updateCnt, $batch_id);
+        $msgEmail.=&formatEmailMessage($EnteredBy, "Specimens", $bad_msg, $insertCnt, $updateCnt, $batch_id);
+        if ($bad_msg) {
+            print "<li>Error .... $bad_msg</li>";
+        } else {
+            print "<li>Successfully updated/inserted specimens</li>";
+            #############################
+            # create tissue table SQL
+            #############################
+            print "<p><b>Tissue insert/update</b></br>";
+            ($msg, $warning, $insertCnt, $updateCnt, $EnteredBy) = run_create_tissue($s, $batch_id);
+            $bad_msg .= $msg;
+            if ($warning) {
+                print "<li>Messages from data loading process .... <br>$warning</li>";
+            }
+            if ($bad_msg) {
+                print "<li>Error .... $bad_msg</li>";
+            } else {
+                print "<li>Successfully updated/inserted tissues</li>";
+            } 
+            $msgWeb.=&formatWebMessage($EnteredBy, "Tissues", $bad_msg, $insertCnt, $updateCnt, $batch_id);
+            $msgEmail.=&formatEmailMessage($EnteredBy, "Tissues", $bad_msg, $insertCnt, $updateCnt, $batch_id);
+        } 
+    }
+
+    if ($q->param( "version" ) ne "") {
+        $msgEmail.="\nLoaded with bioValidator version ". $q->param( "version" )."\n";
+    }  else {
+        $msgEmail.="\nLoaded with online loader or bioValidator version 0.6\n";
+    }
+    $msgEmail .= "\nExcel File= ".$excel_file;
+
+    print "<p>";
+    $msgWeb = "<b>Batch: \# $batch_id</b><p>\n".$msgWeb;
+    print "Email content sent to administrator:<br>".$msgWeb;
+    &send_email($msgEmail,"success");
+}
+
+sub formatEmailMessage {
+
+    ($EnteredBy, $Worksheet, $bad_msg, $insertCnt, $updateCnt, $batch_id)=@_;
+    my $batch_url = "";
+    my $msg = "\n$Worksheet Results:\n";
+
+    if ($Worksheet eq "Collecting_Events") {
+        $batch_url = "http://biocode.berkeley.edu:8000/cgi/biocode_collect_event_query?orderby=EventID&where-batch_id=$batch_id";
+    } elsif($Worksheet eq "Specimens") {
+        my $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+        $batch_url = "http://biocode.berkeley.edu:8000/cgi/biocode_query?orderby=bnhm_id&where-biocode.batch_id=$batch_id&$join";
+    } else {
+        # $batch_url = "http://biocode.berkeley.edu/cgi/biocode_tissue_query?where-biocode_tissue.batch_id=$batch_id&special=batch&table=biocode_tissue&jointables=biocode,biocode_tissue&joincolumns=biocode.bnhm_id+=+biocode_tissue.bnhm_id";
+        $batch_url = "http://biocode.berkeley.edu:8000/cgi/biocode_tissue_query?where-biocode_tissue.batch_id=$batch_id&special=batch&table=biocode_tissue&jointables=biocode,biocode_tissue&joincolumns=biocode.bnhm_id+=+biocode_tissue.bnhm_id";
+    }
+
+    if ($bad_msg) {
+        $bad_msg =~ s/<br>/\n/g;
+        $bad_msg =~ s/<b>//g;
+        $bad_msg =~ s/<\/b>//g;
+        $msg .= "\nNo records were loaded.";
+        $msg .= "\nThe following errors were found:\n";
+        $msg .= "$bad_msg\n";
+    } 
+
+    if ($insertCnt > 0 || $updateCnt > 0) {
+        $msg .= "$insertCnt records inserted\n";
+        $msg .= "$updateCnt records updated\n";
+        $msg .= "URL Reference: $batch_url\n";
+    } else {
+        $msg .= "Nothing to do\n\n";
+    }
+    return $msg;
+}
+
+
+
+
+sub formatWebMessage {
+    ($EnteredBy, $Worksheet, $bad_msg, $insertCnt, $updateCnt, $batch_id)=@_;
+    my $batch_url = "";
+    my $msg = "<b>$Worksheet Results:</b><br>";
+
+    if ($Worksheet eq "Collecting_Events") {
+        # $batch_url = "http://biocode.berkeley.edu/cgi/biocode_collect_event_query?orderby=EventID&where-batch_id=$batch_id";
+        $batch_url = "/cgi/biocode_collect_event_query?orderby=EventID&where-batch_id=$batch_id";
+    } elsif($Worksheet eq "Specimens") {
+        # $batch_url = "http://biocode.berkeley.edu/cgi/biocode_query?orderby=bnhm_id&where-batch_id=$batch_id";
+        my $join = "jointables=biocode_collecting_event,biocode&joincolumns=biocode.Coll_EventID+=+biocode_collecting_event.EventID";
+        $batch_url = "/cgi/biocode_query?orderby=bnhm_id&where-biocode.batch_id=$batch_id&$join";
+    } else {
+        # $batch_url = "http://biocode.berkeley.edu/cgi/biocode_tissue_query?where-biocode_tissue.batch_id=$batch_id&special=batch&table=biocode_tissue&jointables=biocode,biocode_tissue&joincolumns=biocode.bnhm_id+=+biocode_tissue.bnhm_id";
+        $batch_url = "/cgi/biocode_tissue_query?where-biocode_tissue.batch_id=$batch_id&special=batch&table=biocode_tissue&jointables=biocode,biocode_tissue&joincolumns=biocode.bnhm_id+=+biocode_tissue.bnhm_id";
+    }
+
+    if ($bad_msg) {
+        $bad_msg =~ s/<br>/\n/g;
+        $bad_msg =~ s/<b>//g;
+        $bad_msg =~ s/<\/b>//g;
+        $msg .= "\nNo records were loaded.<br>";
+        $msg .= "\nThe following errors were found:<br>\n";
+        $msg .= "$bad_msg<p>\n";
+    } 
+
+    if ($insertCnt > 0 || $updateCnt > 0) {
+        $msg .= "$insertCnt records inserted<br>\n";
+        $msg .= "$updateCnt records updated<br>\n";
+        $msg .= "URL Reference: <a href='http://biocode.berkeley.edu/$batch_url'>http://biocode.berkeley.edu/$batch_url</a><br>\n";
+    } else {
+        $msg .= "Nothing to do<br>\n";
+    }
+    $msg .= "<p>";
+    return $msg;
+}
+
+sub send_email {
+    ($msg,$status) = @_;
+    my $recipients = "jdeck\@berkeley.edu, joyceg\@berkeley.edu";
+    # my $recipients = "joyceg\@berkeley.edu";
+    open(MESSAGE, "| mailx -s \"Biocode Batch Upload Results ($status)\" $recipients");
+#    print MESSAGE "Content-type: text/html;\n\n";
+    print MESSAGE $msg;
+    close(MESSAGE);
+}
+

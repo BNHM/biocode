@@ -1,0 +1,360 @@
+#!/usr/bin/perl
+#
+# biocode_fma_platematch
+# October 2008
+# JBD
+#
+
+require "myquery_utils.p";
+require "myschema.p";
+require "utils.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+@specimens=();
+$msg="";
+
+&readParse(*input);
+&parse_input;
+
+if ($input{download}) {
+    print "Content-Type:application/x-download\n";  
+    print "Content-Disposition:attachment;filename=plateviewer.xls\n\n"; 
+} elsif ($input{labdownload}) {
+    print "Content-Type:application/x-download\n";  
+    print "Content-Disposition:attachment;filename=lablimsformat.xls\n\n"; 
+} else {
+    print "Content-type: text/html\n\n";
+}
+
+
+$msg = "";
+
+if ($input{specimen_num_collector}) {
+    if ($input{specimen_num_collector} eq "deleteme") {
+        ## first, save old record
+        $save_statement = "INSERT INTO biocode_tissue_deleted SELECT * FROM biocode_tissue";
+        $save_statement .= " WHERE format_name96='".$input{format_name96}."' AND well_number96='".$input{well_number96}."'";
+        &process_query($save_statement, "biocode");
+
+        $del_stmt="DELETE FROM biocode_tissue WHERE format_name96='".$input{format_name96}."' AND well_number96='".$input{well_number96}."'";
+        process_query($del_stmt,"biocode") or $msg="error trying to delete record";
+        print $msg.":::";
+    } else {
+        $msg=&checkSpecimenExists($input{specimen_num_collector});
+        if ($msg) {
+            print $msg.":::";
+        } else {
+            # 
+            $thisBnhm_IdPlusTissueNum = checkWellinTissueTable($input{well_number96});
+            $bnhm_id=getBnhm_id($input{specimen_num_collector});
+            $next_tissue=&get_next_tissue_num($bnhm_id);
+            if ($thisBnhm_IdPlusTissueNum) {
+                #    i. bnhm_id is different than what is there -> UPDATE TISSUE TABLE BNHM_ID FOR TISSUE_ID (MBIO056.4)
+                if ($thisBnhm_IdPlusTissueNum ne $bnhm_id) {
+                    ## first, save old record
+                    $save_statement = "INSERT INTO biocode_tissue_deleted SELECT * from biocode_tissue";
+                    $save_statement.=" WHERE well_number96='".$well_number96."' AND format_name96='".$input{format_name96}."'";
+                    $msg .= &process_queryMsg($save_statement, "biocode");
+
+                    $upd_stmt="UPDATE biocode_tissue SET bnhm_id='".$bnhm_id."',tissue_num='".$next_tissue."'";
+                    $upd_stmt.=" WHERE well_number96='".$well_number96."'";
+                    $upd_stmt.=" AND format_name96='".$input{format_name96}."'";
+                    $msg .= &process_queryMsg($upd_stmt,"biocode");
+                    print $msg.":::".$next_tissue; 
+                }
+            } else {
+                $ins_stmt="INSERT INTO biocode_tissue (seq_num,bnhm_id,tissue_num,well_number96,format_name96)";
+                $ins_stmt.=" VALUES (";
+                $ins_stmt.="uuid(),";
+                $ins_stmt.="'".$bnhm_id."',";
+                $ins_stmt.="'".$next_tissue."',";
+                $ins_stmt.="'".$input{well_number96}."',";
+                $ins_stmt.="'".$input{format_name96}."'";
+                $ins_stmt.=")";
+
+                $msg .= &process_queryMsg($ins_stmt,"biocode");
+                print $msg.":::".$next_tissue; 
+            }
+        }
+    }
+} else {
+    if ($input{download} || $input{labdownload}) {
+        &getSpecimen_num_collector;
+    } else {
+        print &getSpecimen_num_collector;
+    }
+}
+
+
+sub checkSpecimenExists {
+    $query="SELECT count(*) FROM biocode where specimen_num_collector ='". $_[0]. "'";
+    ($count)=&get_one_record($query,"biocode");;
+    if ($count < 1) {
+        return "The specimen_num_collector ".$_[0] . " does not exist in the database.";
+    } else {
+        return "";
+    }
+}
+# param0=specimen_num_collector
+sub getBnhm_id {
+    $query="SELECT bnhm_id FROM biocode where specimen_num_collector ='". $_[0]. "' LIMIT 1";
+    ($bnhm_id)=&get_one_record($query,"biocode");;
+    return $bnhm_id;
+}
+
+sub getSpecimen_num_collector{
+
+    $database="biocode";
+    my $query = "";
+    if ($input{platematcher}) {
+        $query="SELECT ";
+        $query.="concat_ws('.',b.specimen_num_collector,bt.tissue_num) as tissue_id,";
+        $query.="bt.well_number96,";
+        $query.="bt.tissue_num, ";
+        $query.="(CASE pic when 1 then b.bnhm_id END) as pic ";
+        $query.="FROM biocode_tissue as bt,biocode as b ";
+        $query.="WHERE b.bnhm_id=bt.bnhm_id AND format_name96='".$input{format_name96}."' ";
+        $query.="ORDER BY bt.well_number96";
+
+    } else {
+        # Download Query
+        if ($input{download}) {
+            $query="SELECT ";
+            $query .= "concat_ws('',";
+            $query .= "b.".$input{field1};
+            if ($input{field2}) {
+                $query .= ",' '";
+                $query .= ",b.".$input{field2};
+            }
+            if ($input{field3}) {
+                $query .= ",' '";
+                $query .= ",b.".$input{field3};
+            }
+            $query .= ",' ',e.extract_barcode) ";
+            $query .= " FROM biocode as b";
+            $query .= " LEFT JOIN biocode_tissue as t ON b.bnhm_id = t.bnhm_ID";
+            $query .= " LEFT JOIN biocode_extract as e ON t.bnhm_id = e.bnhm_ID";
+            $query .= " WHERE t.format_name96='".$input{format_name96}."'";
+            #$query .= " FROM biocode as b,biocode_tissue as t,biocode_extract as e ";
+            #$query .= " WHERE b.bnhm_id=t.bnhm_id AND t.bnhm_id=e.bnhm_id AND t.format_name96='".$input{format_name96}."'";
+        } elsif ($input{labdownload}) {
+            $query="SELECT ";
+            $query .= "t.format_name96,";
+            $query .= "t.well_number96,";
+            $query .= "t.tissue_barcode,";
+            $query .= "b.specimen_num_collector as field_id,";
+            $query .= "b.lowesttaxon,";
+            $query .= "b.genus,";
+            $query .= "b.specificepithet,";
+            $query .= "b.phylum,";
+            $query .= "b.class,";
+            $query .= "b.ordr,";
+            $query .= "b.family,";
+            $query .= "b.subfamily,";
+            # TODO: finch_name should be max 20 characters and alphanumeric only with no spaces (underscores only)
+            $query .= "b.specimen_num_collector as finch_name,";
+            $query .= "e.extract_barcode ";
+            $query .= " FROM biocode as b";
+            $query .= " LEFT JOIN biocode_tissue as t ON b.bnhm_id = t.bnhm_ID";
+            $query .= " LEFT JOIN biocode_extract as e ON t.bnhm_id = e.bnhm_ID";
+            $query .= " WHERE t.format_name96='".$input{format_name96}."'";
+            #$query .= " FROM biocode as b,biocode_tissue as t,biocode_extract as e ";
+            #$query .= " WHERE b.bnhm_id=t.bnhm_id AND b.bnhm_id=e.bnhm_id and t.format_name96='".$input{format_name96}."'";
+        } else {
+            $query="SELECT ";
+            $query .= "concat_ws('',";
+            $query .= "b.".$input{field1};
+            $query .= ",";
+            if ($input{field2}) {
+                $query .= "'<br>',";
+                $query .= "b.".$input{field2};
+                $query .= ",";
+            }
+            if ($input{field3}) {
+                $query .= "'<br>',";
+                $query .= "b.".$input{field3};
+                $query .= ",";
+            }
+            $query .= "'(<a href=\"/cgi/biocode_query?table=biocode&bnhm_id=',b.bnhm_id,'&one=T&OK2SHOWPRIVATE=\">S</a>)";
+            $query .= " (<a href=\"/cgi/biocode_tissue_query?tid=',concat(t.bnhm_id,'.',t.tissue_num),'&one=T\">T</a>)',";
+			# If there is a pic then display the camera icon and relevant link to CalPhotos
+            $query .= " CASE pic when 1 then concat('<a href=\"http://calphotos.berkeley.edu/cgi/img_query?where-specimen_no=',b.bnhm_id,'&where-museum=Moorea+Biocode\" target=_blank><img src=\"/graphics/camera_small.gif\" border=0></a>') END,";
+            $query .= "'<br><i>',e.extract_barcode,'</i>'),";
+            $query .= "t.well_number96 ";
+            $query .= " FROM biocode as b";
+            $query .= " LEFT JOIN biocode_tissue as t ON b.bnhm_id = t.bnhm_ID";
+            $query .= " LEFT JOIN biocode_extract as e ON t.bnhm_id = e.bnhm_ID";
+            $query .= " WHERE t.format_name96='".$input{format_name96}."'";
+            #$query .= " FROM biocode as b,biocode_tissue as t,biocode_extract as e ";
+            #$query .= " WHERE b.bnhm_id=t.bnhm_id AND t.bnhm_id=e.bnhm_id AND t.format_name96='".$input{format_name96}."'";
+            $query .= " ORDER BY t.well_number96";
+        }
+    }
+
+    if ($input{download}) {
+        my $displayNum;
+        print $input{format_name96}."\n";
+        for ($a=1; $a<=12; $a++){
+            print "\t".$a;
+        }
+        print "\n";
+        for ( $i=8, $c='A' ; $i ; $i--, $c=chr(ord($c)+1) ) {
+            print $c;
+            for ($a=1; $a<=12; $a++){
+                if ($a < 10) {
+                    $displayNum="0".$a;
+                }
+                $well_number96 = $c.$displayNum;
+                ($value)= &get_one_record($query." AND t.well_number96='".$well_number96."'","biocode");;
+                print "\t".$value;
+            }
+            print "\n";
+        }
+    } elsif ($input{labdownload}) {
+        $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_user","$g_db_pass");
+        my $displayNum;
+        print $input{format_name96}."\n";
+        $sth = $dbh->prepare( $query ) or $msg="Can't prepare statement: $DBI::errstr\n";
+        $sth->execute;
+        # print out field name headers
+        for ($i=0; $i < $sth->{NUM_OF_FIELDS}; $i++) {
+            print $sth->{NAME}->[$i]."\t";
+        }
+        print "\n";
+        # print out field contents
+        while ( @row = $sth->fetchrow ) {
+            foreach $field (@row) {
+                print $field."\t";
+            }
+            print "\n";
+        }
+        $sth->finish;
+        $dbh->disconnect;
+        return @row;
+    } else {
+        $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_user","$g_db_pass");
+        print $query . ":::";
+        if (!defined $dbh ) { 
+	    $msg="Cannot connect to mysql server: $DBI::errstr\n"; 
+        }
+        $sth = $dbh->prepare( $query ) or $msg="Can't prepare statement: $DBI::errstr\n";
+        $sth->execute;
+        while ( @row = $sth->fetchrow ) {
+
+	    print @row[0]."|".@row[1]."|".@row[2]."|".@row[3]."\n";
+	    #print @row[0]."|".@row[1]."|".@row[2]."\n";
+        }
+        $sth->finish;
+        $dbh->disconnect;
+        return @row;
+    }
+}
+
+#sub loopWells {
+#    my $seq_num;
+#    my $displayNum;
+#    for ( $i=8, $c='A' ; $i ; $i--, $c=chr(ord($c)+1) ) {
+#        for ($a=1; $a<=12; $a++){
+#            if ($a < 10) { $displayNum="0".$a; }
+#            $well_number96 = $c.$displayNum;
+#            $Specimen_Num_Collector = $input{$well_number96};
+#            if ($_[0] eq "update") {
+#
+#                # Flow to support PlateMatcher
+#                # -Well & Plate Name combination in tissue table must be unique (enforced in mysql table syntax)
+#                # -Wells must conform to standard name (enforced in Perl Code)
+#                #
+#                # Assume we Loop through every well on a 96 well plate with either presence or abscence of specimen_num_collector
+#                #
+#                # 0. Translate value in cell to bnhm_id and tissue_num
+#                # 1. Well has a specimen_num_collector (bnhm_id):
+#                #   a. bnhm_id does not exist in specimen table -> THROW ERROR
+#                #   b. Well exists in tissue table 
+#                #       i. bnhm_id is different than what is there -> UPDATE TISSUE TABLE BNHM_ID FOR TISSUE_ID (MBIO056.4)
+#                #       ii. bnhm_id is same -> DO NOTHING
+#                #   c. Well does not exist in tissue table -> INSERT NEW RECORD INTO TISSUE TABLE (bnhm_id, well, plate, tissue_remaining=no)
+#                # 2. Well has no specimen_num_collector (bnhm_id):
+#                #   a. Well has a value in tissue table -> DELETE RECORD from tissue table
+#                #   b. Well has no value in tissue table -> DO NOTHING 
+#
+#                # 0. Translate value in cell to bnhm_id and tissue_num
+#                ($specimen_num_collector,$tissue_num)=split(/\./,$Specimen_Num_Collector);
+#                $bnhm_id=getBnhm_id($specimen_num_collector);
+#
+#                # 1. Well has a specimen_num_collector (bnhm_id):
+#                if ($bnhm_id ne "") {
+#                    #   a. bnhm_id does not exist in tissue table -> THROW ERROR
+#                    #   NOTE: this step is done in "check" below
+#                    #   b. Well exists in tissue table 
+#                    $thisBnhm_IdPlusTissueNum = checkWellinTissueTable($well_number96);
+#                    if ($thisBnhm_IdPlusTissueNum) {
+#                        #    i. bnhm_id is different than what is there -> UPDATE TISSUE TABLE BNHM_ID FOR TISSUE_ID (MBIO056.4)
+#                        if ($thisBnhm_IdPlusTissueNum ne $bnhm_id) {
+#                            $upd_stmt="UPDATE biocode_tissue SET bnhm_id='".$bnhm_id."',tissue_num='".$tissue_num."'";
+#                            $upd_stmt.=" WHERE well_number96='".$well_number96."'";
+#                            $upd_stmt.=" AND format_name96='".$input{format_name96}."'";
+#                            $msg.=&process_queryMsg($upd_stmt,"biocode");
+#                        }
+#                    } else {
+#                        #   c. Well does not exist in tissue table -> INSERT NEW RECORD INTO TISSUE TABLE (bnhm_id, well, plate, tissue_remaining=no)
+#                        #     --Need to determine if this is the same tissue or a new one
+#                        $ins_stmt="INSERT INTO biocode_tissue (seq_num,bnhm_id,tissue_num,from_tissue,well_number96,format_name96)";
+#                        $ins_stmt.=" VALUES (";
+#                        $ins_stmt.="uuid(),";
+#                        $ins_stmt.="'".$bnhm_id."',";
+#                        # Always add an added tissue as a new number
+#                        $ins_stmt.="'".get_next_tissue_num($bnhm_id)."',";
+#                        $ins_stmt.="'".$tissue_num."',";
+#                        $ins_stmt.="'".$well_number96."',";
+#                        $ins_stmt.="'".$input{format_name96}."'";
+#                        $ins_stmt.=")";
+#                        $msg.=&process_queryMsg($ins_stmt,"biocode"); 
+#                    }
+#                # 2. Well has no specimen_num_collector (bnhm_id):
+#                } else { 
+#                    $thisBnhm_IdPlusTissueNum = checkWellinTissueTable($well_number96);
+#                    #   a. Well has a value in tissue table -> DELETE RECORD from tissue table
+#                    if ($thisBnhm_IdPlusTissueNum) {
+#                        ($delBnhm_id,$delTissue_id)=split(/\./,$thisBnhm_IdPlusTissueNum);
+#                        $del_stmt="DELETE FROM biocode_tissue WHERE bnhm_id='".$delBnhm_id."',tissue_num='".$delTissue_num."'";
+#                        $msg.=&process_queryMsg($del_stmt,"biocode");
+#                    }
+#                }
+#            } elsif ($_[0] eq "check") {
+#                if($Specimen_Num_Collector && $well_number96) {
+#                    ($spec_num_coll,$tissue_num)=split(/\./,$Specimen_Num_Collector);
+#                    $bnhm_id=getBnhm_id($spec_num_coll);
+#                    $check = "select count(*) from biocode where bnhm_id='".$bnhm_id."'";
+#                    ($count) = &get_one_record("$check","biocode");
+#                    if ($count != 1) {
+#                        $msg.="$spec_num_coll not in specimen db<br>";
+#                    }
+#                 } 
+#            } 
+#        }
+#    }
+#}
+sub checkWellinTissueTable {
+    $well_number96=$_[0];
+    $query="SELECT concat_ws('.',bnhm_id,tissue_num),count(*) FROM biocode_tissue WHERE well_number96='".$well_number96."' and format_name96='".$input{format_name96}."' GROUP BY format_name96,well_number96";
+    ($id,$count) = &get_one_record("$query","biocode");
+    if ($count != 1) {
+        return 0;
+    } else {
+        return $id;
+    }
+}
+
+# arg 1= bnhm_id
+sub get_next_tissue_num {
+    $bnhm_id=$_[0];
+    ($current_max) = &get_one_record("select max(tissue_num) from biocode_tissue where bnhm_id = '$bnhm_id'","biocode");
+    # $bad_msg .= "<li>current_max = $current_max";
+    if (!$current_max) {
+        return 1;
+    } else {
+        $current_max++;
+        return $current_max
+    }
+}

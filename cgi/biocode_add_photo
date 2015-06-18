@@ -1,0 +1,1497 @@
+#!/usr/bin/perl
+
+# biocode_add_photo
+# Joyce Gross - Feb 25, 2006
+
+
+#   THINGS STILL TO DO: (Dec 5, 2006)
+#
+# - more testing
+#
+# - what to do about genre/lifeform (some hardcoded stuff now....). May have to add to upload form.
+#
+
+#$DEBUG=1;
+
+require "utils.p";
+require "myquery_utils.p";
+require "myimg_utils.p";
+require "myschema.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+require "cgi-lib.pl";
+
+## uncomment for system crashes
+#$CRASH = 1;  ## queries will just exit out of readParse
+#$crash_date = "Tue Apr 21 18:30:54 PDT 2009";
+#&readParse; # this is just for the CRASH=1 bit; comment out when turn photo uploads back on
+
+
+$help_win_link = "<a href=\"javascript:Help_Window('/cgi/biocode_help?page";
+
+
+#################################### cgi-lib.pl stuff ##############################
+
+my  (%input,     # The form data
+     %cgi_cfn,   # The uploaded file(s) client-provided name(s)
+     %cgi_ct,    # The uploaded file(s) content-type(s).  These are
+                 #   set by the user's browser and may be unreliable
+     %cgi_sfn,   # The uploaded file(s) name(s) on the server (this machine)
+     $ret,       # Return value of the ReadParse call.
+     $buf        # Buffer for data read from disk.
+    );
+
+$cgi_lib::writefiles = "$writefiles_dir";
+
+$cgi_lib::maxdata = 8000000;
+
+$ret = &ReadParse(\%input,\%cgi_cfn,\%cgi_ct,\%cgi_sfn);
+
+
+##################################################################################
+
+
+####
+# new record vs. update
+####
+if  ($input{'mode'} eq "update") {
+    $its_an_update = 1;
+    $heading = "Moorea Biocode: Update a Photo Record";
+    $form_bg_color = $lt_sage_color;
+} elsif  ($input{'mode'} eq "delete") {
+    $its_a_delete = 1;
+    $heading = "Moorea Biocode: Delete a Photo Record";
+    $form_bg_color = $lt_sage_color;
+} else {
+    $heading = "Moorea Biocode: Add Photos";
+    $form_bg_color = $lt_bluegray_color;
+}
+
+#####
+# step 2 ready to load it - check input
+#####
+if ($input{'special'} eq "load") {
+    &check_input;
+    if ($bad_msg) {
+	&print_biocode_form_header($heading, $form_bg_color);
+	&print_form;
+	&print_biocode_form_footer;
+
+    } elsif ($input{'mode'} eq "update") {
+	&update_record;
+	&send_email;
+	&print_biocode_form_header($heading, $form_bg_color);
+	print "<b>Collection ID \# $input{bnhm_id} was successfully updated</b>\n";
+	print "<br>\n";
+	print "<a target=new ";
+	print "href=/cgi/biocode_query?bnhm_id=$input{bnhm_id}&one=T>click here to view this record</a> &nbsp;&nbsp;\n";
+	print "<a target=new ";      # JG added for biocode
+	print "href=/cgi/biocode_add_photo?bnhm_id=$input{bnhm_id}&table=biocode>";
+	print "add a photo record for this specimen</a> &nbsp;&nbsp;\n";
+	print "<a target=new ";      # JG added for biocode
+	print "href=/cgi/biocode_add_photo?bnhm_id=$input{bnhm_id}&table=biocode>";
+	print "add a photo of this specimen</a> \n";
+
+	## need firstscreen?
+	print "<FORM name=parentform ACTION=\"/cgi/biocode_add_tissue\" METHOD=\"post\">";
+	print "<p>Update another record: <INPUT type=hidden name=mode value=update>";
+	print "<INPUT type=hidden name=entry_by value=\"$input{entry_by}\">";
+	print "<INPUT name=bnhm_id> <INPUT TYPE=\"submit\" VALUE=\"Go\">";
+	print "</form>";
+	&print_biocode_form_footer;
+
+
+    } else {
+        # print "Content-type: text/html\n\n";
+# HERE DEC 5
+        &process_images;
+
+        &send_email;
+	&print_biocode_form_header($heading, $form_bg_color);
+        print "<center>";
+
+        ### print message of success at top of page
+
+        $number_photos = $#seq_nums;
+        $number_photos++;
+
+        if($number_photos > 1) {
+            print "View photos:<br>";
+        } else {
+            print "View photo:<br>";
+        }
+
+        foreach $sn (@seq_nums) {
+            print "<a href=http://calphotos.berkeley.edu/cgi/img_query?seq_num=$sn&one=T>";
+            print "http://calphotos.berkeley.edu/cgi/img_query?seq_num=$sn&one=T</a><br>";
+        }
+
+
+        if($input{bnhm_id}) {
+            print "<a target=new href=/cgi/biocode_query?bnhm_id=$input{bnhm_id}&one=T>";
+            print "view this specimen record</a></small> &nbsp;&nbsp;\n";
+        } elsif($input{eventID}) {
+            print "<a target=new href=/cgi/biocode_collect_event_query?query_src=biocode_querycollevents&EventID=$input{eventID}&one=T>";
+            print "view this collecting event record</a></small> &nbsp;&nbsp;\n";
+        }
+
+
+	&print_clear_form_button;
+
+        print "</center>";
+
+	#print $loadfile_for_debug;
+	#print $more_debug;
+
+	print "<hr>\n";
+        &print_form;
+        &print_biocode_form_footer;
+    }
+    exit;
+
+} elsif($input{mode} eq "delete") {
+
+    if($input{special} eq "final") {
+        &print_biocode_form_header($heading, $form_bg_color);
+        &delete_tissue_record;
+        &print_delete_tissue_form_done;
+    } else {
+        &print_biocode_form_header($heading, $form_bg_color);
+        &print_delete_tissue_form;
+    }
+
+#####
+# step 1 print the form (if nec, first check password)
+#####
+} else {
+    $fresh_record = 1;  # for some initial values
+
+    if ($input{'special'} eq "firstscreen") {  ## check the password
+
+	if ($its_an_update) {
+	    $cat_id_OK = &check_incoming_cat_id($input{bnhm_id});
+	}
+	$passwd_OK = &check_biocode_name_and_password($input{entry_by},$input{password});
+	
+        ### check for eventID or bnhm_id -- there has to be one or the other
+        if(!$input{id_type}) {
+            $bad_msg .= "<dd><li><b>Specimen number or collecting event number needed.\n";
+        }
+	if (!$input{id_type} || !$passwd_OK || ($its_an_update && !$cat_id_OK)) {
+	    &print_biocode_err_and_exit;
+	} else {
+	    &print_biocode_form_header($heading, $form_bg_color);
+	    &print_form;
+	    &print_biocode_form_footer;
+	    exit;
+	}
+
+    } elsif ($its_an_update) {  # second or later update - password already OK
+	$cat_id_OK = &check_incoming_cat_id($input{bnhm_id});
+	&print_biocode_form_header($heading, $form_bg_color);
+        &print_form;
+        &print_biocode_form_footer;
+        exit;
+
+    } else {   # don't need a password
+        ### check for eventID or bnhm_id -- there has to be one or the other
+        if(!$input{bnhm_id} && !$input{eventID}) {
+            $bad_msg .= "<dd><li><b>Specimen number or collecting event number needed.\n";
+	    &print_biocode_err_and_exit;
+        }
+        &print_biocode_form_header($heading, $form_bg_color);
+        &print_form;
+        &print_biocode_form_footer;
+        exit;
+    }
+}
+
+
+
+sub print_form {
+
+
+    if ($its_an_update) {
+	if ($bad_msg) {  ## need to re-set the values
+	    foreach $v (@biocode_photo_schema) {
+		${$v} = $input{$v};
+	    }   
+        }
+
+    } else {
+	### Get values that were entered into form, to re-print them.
+	foreach $v (@biocode_photo_schema) {
+	    ${$v} = $input{$v};
+	# DEBUG # print "$v: $input{$v} ...";
+        }
+
+        if ($bnhm_id) {  # get values from specimen table
+	    &set_specimen_initial_values;  # do we need this for tissues????  (yes)
+        } 
+
+    }
+    if ($bad_msg) {
+	print "<font color=red><b>";
+	print "Errors found - please correct and submit again...</b></font>\n";
+        print "<small>Problems? email <a href=mailto:bscit\@berkeley.edu?subject=biocode_add_photo>bscit\@berkeley.edu</a></small>";
+	&print_clear_form_button;
+	print "<small>$bad_msg</small>\n";
+	print "<hr>\n";
+        if($input{mode} eq "delete" || $input{mode} eq "update") {
+            exit;
+        }
+
+    } elsif ($input{carryforward}) {
+	$carryforward = $input{carryforward};
+
+    } elsif ($fresh_record) {
+	if ($its_an_update) {
+	    ## use stuff from the record
+	} else {
+	    ## get some initial values
+            if($input{bnhm_id} =~ /([a-zA-Z]+)(\d+)/) {
+                $ProjectCode = uc($1);
+                $CatalogNumberNumeric = "$2";
+                $record_exists = &check_for_specimen_record($ProjectCode.$CatalogNumberNumeric);
+            }
+            if($input{eventID}) {
+                $record_exists = &check_for_collecting_event_record($input{eventID});
+            }
+            if(!$record_exists && $input{bnhm_id}) {
+                $bad_msg .= "Record $input{bnhm_id} does not exist in the Moorea Biocode specimen database.";
+            } elsif(!$record_exists && $input{eventID}) {
+                $bad_msg .= "Record $input{eventID} does not exist in the Moorea Biocode collecting event database.";
+            }
+            if ($bad_msg) {
+	        print "<font color=red><b>";
+                print "Errors found - please correct and submit again...</b></font>\n";
+	        print "<small>$bad_msg</small>\n";
+                exit;
+            }
+	}
+    } else {	## just do the usual
+
+    }
+
+    if($its_an_update) {
+        print "<center>\n";
+        print "[<a href=/cgi/biocode_add_photo?bnhm_id=$input{bnhm_id}&mode=delete>delete this photo record</a>: $input{bnhm_id}]<p>";
+        print "<center>\n";
+    }
+    print "<form name=parentform action=/cgi/biocode_add_photo method=post enctype=\"multipart/form-data\">\n";
+    print "<center>\n";
+    print "<table>\n";
+    print "<tr>\n";
+
+    &print_column_1;
+    &print_column_2;
+
+    print "</tr>\n";
+    print "</table>\n";
+    print "</form>\n";
+}
+
+sub print_column_1 {
+
+    print "<td align=left valign=top>\n";
+
+    &print_codes_and_nums;
+
+    &print_photographer_info;
+
+    print "</td>\n";
+}
+
+
+
+sub print_column_2 {
+    ### Column Two ###
+    print "<td align=left valign=top>\n";
+    print "<table>\n";
+
+    
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 1</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo1 value=\"$photo1\"";
+    if ($photo1)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 2</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo2 value=\"$photo2\"";
+    if ($photo2)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 3</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo3 value=\"$photo3\"";
+    if ($photo3)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 4</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo4 value=\"$photo4\"";
+    if ($photo4)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 5</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo5 value=\"$photo5\"";
+    if ($photo5)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 6</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo6 value=\"$photo6\"";
+    if ($photo6)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 7</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo7 value=\"$photo7\"";
+    if ($photo7)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 8</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo8 value=\"$photo8\"";
+    if ($photo8)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 9</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo9 value=\"$photo9\"";
+    if ($photo9)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=photo')\">Photo 10</a></td>\n";
+    print "<td align=left>";
+    print "<input type=file size=60 name=photo10 value=\"$photo10\"";
+    if ($photo10)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "</table>\n";
+
+    ### End of Column Two ###
+
+    # print "<br>\n";
+
+    print "<input type=hidden name=special value=load>\n";
+    if ($GetNextCollEventID) {
+	print "<input type=hidden name=GetNextCollEventID value=1>\n";
+    } else {
+	print "<input type=hidden name=carryforward value=1>\n";
+    }
+    print "<input type=hidden name=entry_by value = \"$input{entry_by}\" >\n";
+    if ($its_an_update) {
+	print "<input type=hidden name=mode value=update>\n";
+	print "<input type=submit value=\"Update Photo Record\">\n";
+    } else {
+	print "<input type=submit value=\"Submit Photo(s)\">\n";
+    }
+    print "</td>\n";
+}
+
+sub print_codes_and_nums {
+    print "<table cellspacing=5 cellpadding=5>\n";
+
+    if($input{bnhm_id}) {
+        print "<tr>\n";
+        print "<td align=right>";
+        print "<nobr>";
+        print "$help_win_link=CatID')\">Catalog ID Num";
+        print "</a><font color=red> * </font>\n";
+        print "<td>";
+
+        $ProjectCode = uc($ProjectCode);
+
+        if (!$CatalogNumberNumeric) {
+            $CatalogNumberNumeric = $input{CatalogNumberNumeric};
+        }
+        if ($its_an_update) {
+            print "<input type=hidden name=ProjectCode value=\"$ProjectCode\">";
+            print "$ProjectCode ";
+            } else {
+            if($ProjectCode =~ /(\w+)(\d+)/) {  # hack because ProjectCode is wrong
+            $ProjectCode = uc($1);
+        }
+            print "<select size=1 name=ProjectCode class=yellbg>";
+            &print_institution_options($ProjectCode);
+            print "</select>";
+        }
+
+        if ($its_an_update) {
+            print "<input type=hidden name=CatalogNumberNumeric value=\"$CatalogNumberNumeric\">";
+            print "$CatalogNumberNumeric";
+            print "<input type=hidden name=tissue_num value=\"$tissue_num\">";
+            print ".$tissue_num";
+        } else {
+            print "<input type=hidden name=id_type value=\"bnhm_id\">";
+            print "<input type=hidden name=collectn value=\"Biocode\">";
+            print "<input ";
+            print "size=10 name=CatalogNumberNumeric  value=\"$CatalogNumberNumeric\" ";
+            if($CatalogNumberNumeric) {
+                print " class=yellbg";
+            }
+            print ">\n";
+        }
+        print "</nobr>\n";
+        print "</td>\n";
+        print "</tr>\n";
+
+
+    } elsif($input{eventID}) {
+        print "<tr>\n";
+        print "<td align=right>";
+        print "<nobr>";
+        print "$help_win_link=eventID')\">Collecting Event ID";
+        print "</a><font color=red> * </font>\n";
+        print "<td>";
+    
+        if ($its_an_update) {
+            print "<input type=hidden name=eventID value=\"$input{eventID}\">";
+            print "$input{eventID}";
+        } else {
+            print "<input type=hidden name=id_type value=\"eventID\">";
+            print "<input type=hidden name=collectn value=\"Biocode\">";
+            print "<input ";
+            print "size=10 name=eventID value=\"$input{eventID}\" ";
+            if($eventID) {
+                print " class=yellbg";
+            }
+            print ">\n";
+        }
+        print "</nobr>\n";
+        print "</td>\n";
+        print "</tr>\n";
+    }
+
+}
+
+
+
+sub print_photographer_info {
+
+
+    &print_one_photographer_option;  # mybiocode_utils.p  # people = photographer = subsampler
+
+
+
+    &print_collection_date_options_photo;  # mybiocode_utils.p
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Photo_Type')\">Photo Type</a>\n";
+    print "<font color=red> * </font>\n";
+    print "</td>";
+    print "<td>";
+    print "<select size=1 name=photo_type ";
+    if ($photo_type)  { print " class=yellbg"; }
+    print ">";
+    &print_biocode_photo_type_options($photo_type);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Camera_Info')\">Camera Info</a></td>\n";
+    print "<td align=left>";
+    print "<input type=text name=photo_info size=40 value=\"$photo_info\" ";
+    if ($photo_info)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Notes')\">Notes</a></td>\n";
+    print "<td align=left>";
+    print "<textarea wrap=hard name=photog_notes cols=40 rows=2";
+    if ($photog_notes)  { print " class=yellbg"; }
+    print ">$photog_notes</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Captive_Wild')\">Captive vs Wild</a></td>\n";
+    print "<td align=left>";
+    print "<input type=radio name=loc_type value=wild>in the wild \n";
+#    print "<small>(where the plant/animal was living)</small> \n";
+    print "<input type=radio name=loc_type value=captivity checked>in captivity \n";
+#    print "<small>(collected specimen, etc.)</small> \n";
+    print "</td>\n";
+    print "</tr>\n";
+    print "</tr>\n";
+    print "</tr>\n";
+
+    
+    print "</table>\n";
+
+    print "<table>\n";
+
+
+    print "<tr>\n";
+    print "<td colspan=2><p><br>";
+    print "<font color=red> * Required field</font>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+}
+
+sub check_input {
+
+    ## change 'unselected' to ''
+    foreach $s (@biocode_photo_schema) {
+        if ($input{$s} eq "unselected") {
+            $input{$s} = "";
+        }
+    }
+    ## these check incoming stuff, and also add more info
+    if(!$input{photo_type}) {
+        $bad_msg .= "<dd><li><b>Photo Type required.\n";
+    }
+    &check_numbers;
+    &check_ymd_dates_photos;
+    &check_five_collectors;  # mybiocode_utils.p
+}
+
+
+sub check_numbers {
+
+
+    $input{seq_num} = 0;
+
+    if($input{id_type} eq "bnhm_id") {
+        if (!$input{ProjectCode}) {
+            $bad_msg .= "<dd><li><b>Project Code</a> is required\n";
+        }
+
+        if (!$input{CatalogNumberNumeric}) {
+            $bad_msg .= "<dd><li><b>Catalog Number</b> is required";
+
+        } elsif ($its_an_update) {
+            # just create bnhm_id
+            $input{bnhm_id} = $input{ProjectCode} . $input{CatalogNumberNumeric};
+
+        } else {
+            $OK = &is_an_integer($input{CatalogNumberNumeric});
+            if (!$OK) {
+                $bad_msg .= "<dd><li><b>Catalog Number</b> ";
+                $bad_msg .= "\"$input{CatalogNumberNumeric}\" is not an integer";
+            } else {
+                $input{bnhm_id} = $input{ProjectCode} . $input{CatalogNumberNumeric};
+                $CatNumExists = &get_count(biocode,"bnhm_id='$input{bnhm_id}'");
+            }
+        }
+    } elsif($input{id_type} eq "bnhm_id") {
+        if (!$input{eventID}) {
+            $bad_msg .= "<dd><li><b>Collecting Event Number</a> is required\n";
+        }
+        $CollEventIDExists = &check_for_collecting_event_record($input{eventID});
+        if (!$CollEventIDExists) {
+            $bad_msg .= "<dd><li><b>Collecting Event Number</a> $input{eventID} doesn't exist.\n";
+        }
+    }
+
+
+
+}
+
+
+
+
+sub update_record {
+
+    # delete old record, insert new record
+
+    #$debugging = 1;
+
+    ## first, save old record
+#    $save_statement = "insert into biocode_deleted select * from biocode where bnhm_id=\"$input{bnhm_id}\"";
+#    &process_query($save_statement, "biocode");
+
+    $del_statement = "delete from biocode_photo where bnhm_id=\"$input{bnhm_id}\" and tissue_num = $input{tissue_num}";
+    if ($debugging) {
+        # print "$del_statement<p>";
+    } else {
+        &process_query($del_statement, "biocode");
+	&load_photo_record;
+    }
+}
+
+sub print_feedback {
+    # print nice message to Web page after record is loaded
+
+    &print_biocode_header;
+    print "<h4>The new record has been added! &nbsp;&nbsp;Coll. ID #&nbsp;  ";
+    print "<font color=red>$input{bnhm_id}</font></h4>";
+
+    ## DEBUG
+    ## print "$loadfile_for_debug<p>";
+
+    ## print hidden fields for carry forward
+    
+    print "\n<form name=parentform action=/cgi/biocode_add_photo method=post>\n";
+    print "<input type=hidden name=special value=carryforward>\n";
+    print "<input type=hidden name=last_first_coll1  value=\"$input{last_first_coll1}\">\n";
+
+
+    foreach $v (@biocode_photo_schema) {
+	print "<input type=hidden name=$v value=\"$input{$v}\">\n";
+    }
+
+    print "<input type=submit value=\"Click Here to add another record with the same info\">\n";
+    print "</form>";
+
+    ## print no carry forward link
+    print "<form name=parentform action=/cgi/biocode_add_photo method=post>\n";
+    print "<input type=hidden name=special value=another>\n";
+    print "<input type=hidden name=entry_by value=\"$input{entry_by}\">\n";
+    print "<input type=submit value=\"Click Here to add another record - new info\">\n";
+    print "</form>\n";
+
+    print "<br><br><a href=/cgi/biocode_query?bnhm_id=$input{bnhm_id_Num}&one=T  target=newwin>Click Here</a> to see the new record (new window).";
+
+    ## print out each field
+    print "<br><br><h4>Here are the values for the new record:</h4>\n";
+#    print "<table>\n";
+#   foreach $attr (@biocode_schema) {
+#	print "<tr><td align=right><i>$attr</i></td>\n";
+#	if ($input{$attr} eq "unselected") {$input{$attr} = "";}
+#	print "<td>$input{$attr}</td></tr>\n";
+#    }
+#    print "</table>\n";
+    print "<p>";
+    &print_biocode_footer;
+}
+
+
+sub send_email {
+
+
+    if ($its_an_update) {
+        open(MESSAGE, "| mailx -s \"Moorea Biocode photo database update \" $recipients");
+        print MESSAGE "A photo record ";
+        if($input{bnhm_id}) {
+            print MESSAGE "(for specimen $input{bnhm_id}) ";
+        } elsif($input{eventID}) {
+            print MESSAGE "(for collecting event $input{eventID}) ";
+        }
+        print MESSAGE "has been updated in ";
+        print MESSAGE "the Moorea Biocode photo database. \n\n";
+	
+
+    } else {
+	open(MESSAGE, "| mailx -s \"Moorea Biocode photo(s) uploaded\" $recipients");
+	print MESSAGE "A new photo record ";
+        if($input{bnhm_id}) {
+            print MESSAGE "(for specimen $input{bnhm_id}) ";
+        } elsif($input{eventID}) {
+            print MESSAGE "(for collecting event $input{eventID}) ";
+        }
+	print MESSAGE "has been loaded into ";
+	print MESSAGE "the Moorea Biocode photo database. \n\n";
+
+        foreach $sn (@seq_nums) {
+            print MESSAGE "http://calphotos.berkeley.edu/cgi/img_query?seq_num=$sn&one=T\n";
+        }
+        print MESSAGE "\nLoad file(s): \n\n";
+        foreach $l (@loadfiles) {
+            print MESSAGE "$l\n\n";
+        }
+    }
+    
+
+    close(MESSAGE);
+}
+
+sub print_clear_form_button {
+    
+    $url_entry_by = $input{entry_by};
+    $url_entry_by =~ s/ /\+/g;
+    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "<a href=/cgi/biocode_add_photo?entry_by=$url_entry_by>";
+    print "<small>[CLEAR FORM]</small></a>\n";
+
+
+    if ($Submit) {
+	print "<form name=parentform method=post action=\"/cgi/biocode_add_photo\">\n";
+	print "<input type=hidden name=special value=another>\n";
+	print "<input type=hidden name=entry_by value=\"$input{entry_by}\">\n";
+	print "<br><input type=submit value=\"Clear Form\">\n\n";
+	print "</form>\n";
+    }
+}
+
+sub print_refresh_list_button {
+    
+    $url_entry_by = $input{entry_by};
+    $url_entry_by =~ s/ /\+/g;
+    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "<a href=/cgi/biocode_add_photo?entry_by=$url_entry_by>";
+    print "[refresh list]</a>\n";
+
+}
+
+
+
+
+sub set_specimen_initial_values {
+    ## get some initial values
+    if($input{bnhm_id} =~ /([a-zA-Z]+)(\d+)/) {
+        $ProjectCode = uc($1);
+        $CatalogNumberNumeric = "$2";
+    }
+}
+
+
+
+
+sub print_delete_photo_form {
+    print "<center>\n";
+
+    print "Are you sure you want to delete the photo record $input{bnhm_id}?\n";
+
+    print "<form name=parentform action=/cgi/biocode_add_photo method=post>\n";
+    print "<input type=hidden name=mode value=delete>\n";
+    print "<input type=hidden name=special value=final>\n";
+    print "<input type=hidden name=bnhm_id value=\"$input{bnhm_id}\">\n";
+    print "<input type=submit value=\"Delete Tissue Record\">\n";
+    print "<input type=clear value=\"Nevermind [doesn't work yet]\">\n";
+    print "</form>\n";
+
+    print "</center>\n";
+}
+
+sub delete_photo_record {
+    if($input{bnhm_id} =~ /([a-zA-Z]+)(\d+)\.(\d+)/) {
+        $ProjectCode = uc($1);
+        $CatalogNumberNumeric = $2;
+        $tissue_num = $3;
+        $bnhm_id =  $ProjectCode.$CatalogNumberNumeric;
+        $delete = "delete from biocode_photo where bnhm_id = '$bnhm_id' and tissue_num = $tissue_num";
+        # print "delete: $delete<p>";
+        &process_query($delete, "biocode");
+    } else {
+        $bad_msg .= "$input{bnhm_id}: invalid photo record";       
+        print "$input{bnhm_id}: invalid photo record";       
+    }
+}
+
+sub print_delete_photo_form_done {
+    $input{bnhm_id} = uc($input{bnhm_id});
+    print "<center>\n";
+    print "Tissue record $input{bnhm_id} has been deleted.\n";
+    print "</center>\n";
+}
+
+sub print_collection_date_options_photo { # used for biocode_add_photo
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=CollectionDate')\">Date Taken";
+    print "</a></td>\n";
+    print "<td align=left><nobr>\n";
+    print "<input size=4 maxlength=4 name=year value=$input{year}";
+    if ($input{year}) { print " class=yellbg"; }
+    print ">yyyy\n";
+    print "<input size=2 maxlength=2 name=month value=$input{month}";
+    if ($input{month}) { print " class=yellbg"; }
+    print ">mm\n";
+    print "<input size=2 maxlength=2 name=day value=$input{day}";
+    if ($input{day}) { print " class=yellbg"; }
+    print ">dd\n";
+    print "</nobr></td>\n";
+    print "</tr>\n";
+
+
+}
+
+
+sub process_images {
+
+    @possible_photos = qw(photo1 photo2 photo3 photo4 photo5 photo6 photo7 photo8 photo9 photo10);
+
+
+    ### check photo metadata
+    &check_photo_metadata;
+
+
+    ### find out how many photos were uploaded; delete the zero k files
+    foreach $photo (@possible_photos) {
+        if(-s $input{$photo}) {     # file is not zero k in size
+            push(@actual_photos,$photo);
+        } else {
+            $c = "/bin/rm -f $input{$photo}";
+            `/bin/rm -f $input{$photo}`;
+        }
+    }
+
+    ### check if there are any actual photos
+    if(!$actual_photos[0]) {
+	$bad_msg .= "<dd><li><b>You have not selected any photos to upload.";
+    }
+
+    ### check file format of photos (jpegs only)
+    ### check file size (make smaller "enlargement" if necessary)
+    foreach $photo (@actual_photos) {
+        &check_file_format_and_size($input{$photo},$photo);  # $input{$photo} = new filename (ie, cgi-lib.12675.5)
+                                                             # $photo = photo1, photo2, etc. (used to get orig filename)
+    }
+    if ($bad_msg) {
+        &print_biocode_form_header($heading, $form_bg_color);
+        &print_form;
+        &print_biocode_form_footer;
+        exit;
+    }
+
+    # print "Content-type: text/html\n\n";
+
+# HERE
+
+    if($input{bnhm_id}) {
+        &get_common_photo_metadata($input{bnhm_id});
+    } elsif($input{eventID}) {
+        &get_common_photo_metadata($input{eventID});
+    }
+
+    ### make thumbnail
+    foreach $photo (@actual_photos) {
+        &make_thumbnail($input{$photo});
+        if($input{bnhm_id}) {
+            &load_photo_record($input{bnhm_id},$photo);
+        } elsif($input{eventID}) {
+            &load_photo_record($input{eventID},$photo);
+        }
+
+        &move_to_storage($input{kwid},$input{$photo});
+
+    }
+
+    if($input{bnhm_id}) {
+        &update_biocode_table($input{bnhm_id});
+    } elsif($input{eventID}) {
+        &update_biocode_table($input{eventID});
+    }
+
+}
+
+
+
+sub check_photo_metadata {
+
+    ### check for photographer name
+    if($input{photographer} eq "unselected" || $input{photographer} eq "") {
+	$bad_msg .= "<dd><li><b>Photographer Name</a> is required\n";
+    }
+    # get name into right format  ("First Last" not "Last, First")
+    ($lastname,$input{photographer},$shortname) = &make_collector_names($input{photographer}); 
+
+    ### check for year
+    if($input{year} eq "yyyy" || $input{year} eq "") {
+	$bad_msg .= "<dd><li><b>Year</a> is required\n";
+    }
+
+
+    ### check for valid bnhm_id (if there is one)
+    if($input{id_type} eq "bnhm_id") {
+        $query = "select count(*) from biocode where bnhm_id = '$input{bnhm_id}'";
+        ($count) = &get_one_record($query);
+        if(!$count) {
+            $bad_msg .= "<dd><li><b>Specimen doesn't exist</a>: $input{bnhm_id}\n";
+        }
+    }
+
+    ### check for valid eventID (if there is one)
+    if($input{id_type} eq "eventID") {
+        $query = "select count(*) from biocode_collecting_event where EventID = '$input{eventID}'";
+        ($count) = &get_one_record($query);
+        if(!$count) {
+            $bad_msg .= "<dd><li><b>Collecting Event ID doesn't exist</a>: $input{eventID}\n";
+        }
+    }
+
+
+    ### check for valid filename (remove spaces, etc.) ???
+#    $cgi_cfn{filename}
+
+    if ($bad_msg) {
+	&print_biocode_form_header($heading, $form_bg_color);
+	&print_form;
+	&print_biocode_form_footer;
+        exit;
+    }
+
+}
+
+sub check_file_format_and_size {
+    my($file,$photo_name) = @_;
+
+    $new_bad_msg = "";
+
+    ### Find out if it's a jpeg or not.
+    if(-s $file) {     # file is not zero k in size
+        $file_msg = `/usr/bin/file $file`;
+        if($file_msg !~ /JPEG/i) {
+            $pnm_msg = `/usr/local/bin/djpeg -pnm $file | /usr/local/bin/pnmfile`;
+            if($pnm_msg !~ /PPM raw/i) {
+                $bad_msg .= "<dd><li>The <b>photo you uploaded ($cgi_cfn{$photo_name}) is not a JPEG</b>. ";
+                $bad_msg .= "Please upload a different file. ";
+            }
+        }
+
+        ### Check the size of the image.
+        if(!$new_bad_msg) {
+            $large_pnm_msg = `/usr/local/bin/djpeg -pnm $file | /usr/local/bin/pnmfile`;
+            if ($large_pnm_msg =~ /^.+\s(\d\d\d+) by (\d\d\d+)\s.+$/) {
+                $large_width = $1;
+                $large_height = $2;
+            }
+            if($large_width < 300 || $large_height < 300) {
+                $bad_msg .= "<dd><li>The photo you uploaded ($cgi_cfn{$photo_name}) is <b>not ";
+                $bad_msg .= "large enough</b>.";
+                $bad_msg .= "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+                $bad_msg .= "Your dimensions are w=$large_width h=$large_height.";
+                $bad_msg .= "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+                $bad_msg .= "Ideal dimensions are 750 x 500 or 500 x 750 pixels. ";
+                $bad_msg .= "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+                $bad_msg .= "Minimum dimensions are 300 x 300 pixels.";
+                $new_bad_msg = $bad_msg;
+            } elsif($large_width > 1025 || $large_height > 1025) {
+                &shrink_huge_image($file);
+            }
+        }
+    }
+
+}
+
+
+
+
+# HERE Feb 11
+sub make_thumbnail {
+    my($file) = @_;
+    $thumbnail = $file."_thumb";
+    my $tnailscript;
+
+    if(-s $file) {     # file is not zero k in size
+        #$command  = "/usr/local/bscit/bin/mymake_thumbnail.p $file $thumbnail";
+        ## print "$command";
+        #system($command);
+
+        #$tnailscript = "/usr/local/bscit/bin/ImgProcess/make_one_thumbnail_img_add.p";
+        #$command  = "$tnailscript $file $thumbnail";
+        #system($command);
+        &make_one_thumbnail($file, $thumbnail);
+
+    }
+}
+
+
+sub shrink_huge_image {
+    my($origphoto) = @_;
+
+    # Make backup of huge image first, in case we need to track a problem.
+    # Then we overwrite the original image with a shrunken version.
+    $origphoto_orig = $origphoto . "_orig";
+    `cp $origphoto $origphoto_orig`;
+
+    # Call the program that shrinks the image.
+    $command  = "/usr/local/bscit/bin/shrink_huge_image.pl $origphoto";
+    system($command);
+
+}
+
+sub get_common_photo_metadata {
+
+    my($id) = @_;      # bnmh_id or eventID 
+
+    if($input{year} && $input{month} && $input{day}) {
+        $input{date_prec} = "exactday";
+    }elsif(!$input{month}) {
+        $input{month} = "01";
+        $input{day} = "01";
+        $input{date_prec} = "exactyear";
+    }elsif(!$input{day}) {
+        $input{day} = "01";
+        $input{date_prec} = "exactmonth";
+    }
+
+    $input{photo_date} = $input{year}."-".$input{month}."-".$input{day};
+
+
+    if($input{loc_type} eq "wild") {
+        $input{captivity} = "0";
+    } else {
+        $input{captivity} = "1";
+    }
+
+    $input{enlarge} = "3";
+    $input{copyright} = "$input{year} Moorea Biocode";
+    $input{ready} = 1;
+
+    $query = "select email from photographer where name_full = '$input{photographer}'";
+    ($input{email}) = &get_one_record($query,"image");
+    if(!$input{email}) {
+        &add_new_photographer($input{photographer});
+        $input{contact} = "$input{photographer} $email";
+    } else {
+        $input{contact} = "$input{photographer} $input{email}";
+    }
+
+    if($id =~ /^MBIO/) {
+        $bnhm_id = $id;
+    } elsif($id =~ /^\d+$/) {
+        $eventID = $id;
+    }
+
+
+# HERE 
+    if($bnhm_id) {
+        ######## get fields for specimen
+
+        $input{specimen_no} = $bnhm_id;
+        $input{museum} = "Moorea Biocode";
+
+        &get_biocode_specimen_fields("$bnhm_id");
+
+    } elsif($eventID) {
+        ######## get fields for collecting event
+
+        $input{specimen_no} = "EventID $eventID";
+        $input{museum} = "Moorea Biocode";
+
+        &get_biocode_collevent_fields("$eventID");
+
+    }
+}
+
+sub load_photo_record {
+
+    my($id,$photo) = @_;      # (bnmh_id or eventID) + photo fieldname
+    my $p = "";
+
+
+    $input{orig_filename} = $cgi_cfn{$photo};
+
+    $p = "$input{$photo}";
+    $input{orient} = &get_orientation($p);
+
+
+    &get_kwid;
+    $input{kwid} = $kwid;
+
+    $input{seq_num} = &get_img_seq_num;  # gets seq_num for img table
+    push(@seq_nums,$input{seq_num});  # for printing links to photos later
+
+    &img_recd_insert($input{seq_num});
+
+    ($a, $b, $c, $input{imgnum}) = split(/\s/, $input{kwid});
+    $input{disknum} = "$a $b $c";
+    $input{disknum} = &strip($input{disknum});
+
+    $date = &get_todays_date;
+    $input{index_date} = &make_date($date);
+
+
+    $loadfile = "";
+    $loadfile_for_debug = "";
+
+    ## make load file
+    foreach $attr (@img_schema) {
+        $val = &strip($input{$attr});
+        if (!$val || $val eq "unselected" || $val eq "none") {
+            $val = "\\N";
+        }
+        $loadfile .= "$val|";
+
+        # print field names in orange for debugging
+        $loadfile_for_debug .= "<font color=orange>$attr=</font>|$val| ";
+        # print "<font color=orange>$attr=</font>|$val| ";
+    }
+
+    push(@loadfiles,$loadfile);
+
+    &load_biocode_record($loadfile,"img","image");  # mybiocode_utils.p
+
+}
+
+
+sub move_to_storage {
+    my($kwid,$file) = @_;       # kwid + /path/newfile
+
+    my $enlargement = "";
+    my $thumbnail = "";
+    my $orig = "";
+
+
+    my $tmp_thumb = $file."_thumb";
+    my $tmp_orig = $file."_orig";  # only if a very large jpeg was submitting (> ~1000 x ~1000 pixels)
+
+    ($a, $b, $mmyy, $img_num) = split(/\s+/,$kwid);
+
+    if($bnhm_id) {
+        $enlargement = "$enlargements_dir/$mmyy/".$img_num.".jpeg";
+        $thumbnail = "$thumbnails_dir/$mmyy/".$img_num.".jpeg";
+        # $orig = "$originals_dir/$bnhm_id"."_".$photo_num.".jpg";
+    } elsif($eventID) {
+        $enlargement = "$enlargements_dir/$mmyy/".$img_num.".jpeg";
+        $thumbnail = "$thumbnails_dir/$mmyy/".$img_num.".jpeg";
+        # $orig = "$originals_dir/CE".$eventID."_".$photo_num.".jpg";
+    }
+
+
+    #`/bin/mv $tmp_thumb $thumbnail`;
+    #`/bin/mv $file $enlargement`;
+    `/usr/local/bscit/bin/bscitcp $tmp_thumb $thumbnail`;
+    `/usr/local/bscit/bin/bscitcp $file $enlargement`;
+
+    #if(-e $tmp_orig) {
+    #    `/bin/mv $tmp_orig $orig`;
+    #}
+}
+
+
+sub check_ymd_dates_photos {
+
+    ($OK,$msg) = &checkYMD($input{year},$input{month},$input{day},);
+    if (!$OK) {$bad_msg .= "<dd><li><b>Y/M/D of photo(s)</b> $msg";}
+
+}
+
+
+sub img_recd_insert {
+    # copied and modified from pre-bscit batch upload script
+
+    my ($img_seq_num) = @_;
+
+    my $date, $inf_date, $insert;
+
+    $date = &get_todays_date;
+    $inf_date = &make_date($date);
+
+    $insert  = "insert into img_recd values (0, ";
+    $insert .= "'$inf_date', '$kwid', '$input{collectn}', '$input{photographer}', 0, ";
+    $insert .= "$img_seq_num)";
+
+    # print "In img_recd_insert: insert into img_recd: $insert<p>";
+
+    &process_query($insert,"biocode");
+
+}
+
+
+sub get_img_seq_num {
+    # copied and modified from pre-bscit batch upload script
+
+    my $max_query, $img_seq_num;
+
+    $max_query = "select max(seq_num) from img;\n\n";
+    @row = &get_one_record($max_query,"image");
+    my $img_table_seq_num = $row[0];
+
+
+    $max_query = "select max(img_seq_num) from img_recd;\n\n";
+    @row = &get_one_record($max_query,"elib");
+    my $img_recd_table_seq_num = $row[0];
+
+    if($img_table_seq_num > $img_recd_table_seq_num) {
+        $img_seq_num = $img_table_seq_num;
+    } else {
+        $img_seq_num = $img_recd_table_seq_num;
+    }
+
+    $img_seq_num = $img_seq_num + 1;
+
+    # print "In get_img_seq_num: seq num: $img_seq_num\n";
+
+    return $img_seq_num;
+
+}
+
+
+sub get_kwid {
+
+    my $old_img_num = "";
+    my $new_img_num = "";
+
+    $first4 = "4444";
+    $second4 = "4444";
+    &get_mmyy;
+
+
+    $query = "select max(kwid) from img_recd where kwid like '$first4 $second4 $mmyy%'";
+    @row = &get_one_record($query,"elib");
+
+    $max_kwid = $row[0];
+    ($a, $b, $c, $old_img_num) = split(/\s/, $max_kwid);
+
+    $new_img_num = &get_new_img_num($old_img_num);
+
+    $disknum = "$first4 $second4 $mmyy";
+    $imgnum = "$new_img_num";
+    $kwid = "$first4 $second4 $mmyy $new_img_num";
+}
+
+
+sub get_mmyy {
+
+    $todays_date = &get_todays_date;
+    @date_parts = split(/\-/,$todays_date);
+    $yy = substr($date_parts[0], 2, 2);
+    $mm = $date_parts[1];
+    $mmyy = $mm.$yy;
+
+    &make_new_mmyy_dir($mmyy); # only makes them if they're not there
+
+}
+
+
+
+
+sub make_new_mmyy_dir {
+
+    my ($dir) = @_;
+
+    chdir("$thumbnails_dir") || die "Can't change directory ";
+    if(!-e $dir) {
+        #mkdir($dir, 0777) if (! -e) || die "Can't make new $dir directory ";
+        #`chmod -R a+w $dir`;
+        `/usr/local/bscit/bin/bscitmkdir $dir`;
+    }
+
+    chdir("$enlargements_dir") || die "Can't change directory ";
+    if(!-e $dir) {
+        #mkdir($dir, 0777) if (! -e) || die "Can't make new $dir directory ";
+        #`chmod -R a+w $dir`;
+        `/usr/local/bscit/bin/bscitmkdir $dir`;
+    }
+
+}
+
+sub get_new_img_num {
+
+    my ($old_img_num) = @_;
+    my $new_img_num;
+
+    $new_img_num = $old_img_num + 1;
+
+    if(length($new_img_num) == 1) {
+        $new_img_num = "000".$new_img_num;
+    } elsif(length($new_img_num) == 2) {
+        $new_img_num = "00".$new_img_num;
+    } elsif(length($new_img_num) == 3) {
+        $new_img_num = "0".$new_img_num;
+    }
+
+    return "$new_img_num";
+
+}
+
+
+sub get_biocode_specimen_fields {
+
+     my ($bnmh_id) = @_;
+
+
+     $query =  "select genus, specificepithet, subspecificepithet, family, ordr, class, phylum, ";
+     $query .= "Locality, Island, IslandGroup, Country, ContinentOcean, DecimalLatitude, DecimalLongitude ";
+     $query .= "from biocode where bnhm_id = '$bnhm_id'";
+
+     ($genus, $species, $subspecies, $input{family}, $input{ordr}, $input{class}, $input{phylum}, $input{location}, $input{island}, $input{islandgroup}, $input{country}, $input{continent}, $input{lat}, $input{lng}) = &get_one_record($query);
+
+     $input{taxon} = "$genus $species $subspecies";
+     $input{taxon} = &strip($input{taxon});
+     $input{ph_taxon} = $input{taxon};
+
+     $input{country} = $country_codes{uc($input{country})};
+
+     $input{namesoup} = "$input{taxon} $input{family}";
+
+     ($input{genre}, $input{lifeform}) = split(/--/,$input{photo_type});    # this is for CalPhotos
+
+
+     $input{cap_loc} = "Moorea"; # ???
+}
+
+
+
+sub get_biocode_collevent_fields {
+     my ($coll_eventID) = @_;
+
+     $query  = "select ContinentOcean, IslandGroup, Island, Country, Locality, ";
+     $query .= "DecimalLongitude, DecimalLatitude from biocode_collecting_event where eventID = $coll_eventID ";
+
+     ($input{continent}, $input{islandgroup}, $input{island}, $input{country}, $input{location}, $input{lng}, $input{lat})
+         = &get_one_record($query);
+
+     $input{country} = $country_codes{uc($input{country})};
+
+     $input{genre} = "Landscape";
+     $input{lifeform} = "fieldsite";
+
+}
+
+
+sub get_lifeform_old {
+     my ($class) = @_;
+     my $lifeform = "";
+
+     if($class eq "Actinopterygii" ||
+        $class eq "Elasmobranchii") {
+         $lifeform = "Fish";
+
+     } elsif($class eq "Anthozoa" ||
+        $class eq "Appendicularia" ||
+        $class eq "Articulata" ||
+        $class eq "Asteroidea" ||
+        $class eq "Bivalvia" ||
+        $class eq "Calcarea" ||
+        $class eq "Cephalopoda" ||
+        $class eq "Cirripedia" ||
+        $class eq "Crinoidea" ||
+        $class eq "Crustacea" ||
+        $class eq "Demospongiae" ||
+        $class eq "Echinoidea" ||
+        $class eq "Gastropoda" ||
+        $class eq "Gymnolaemata" ||
+        $class eq "Hirudinea" ||
+        $class eq "Holothuroidea" ||
+        $class eq "Hydrozoa" ||
+        $class eq "Inarticulata" ||
+        $class eq "Malacostraca" ||
+        $class eq "Maxillopoda" ||
+        $class eq "Merostomata" ||
+        $class eq "Monogenea" ||
+        $class eq "Ophiuroidea" ||
+        $class eq "Ostracoda" ||
+        $class eq "Phylactolaemata" ||
+        $class eq "Polyplacophora" ||
+        $class eq "Pycnogonida" ||
+        $class eq "Scaphopoda" ||
+        $class eq "Scyphozoa" ||
+        $class eq "Sipunculidea" ||
+        $class eq "Stenolaemata" ||
+        $class eq "Thaliacea" ||
+        $class eq "Turbellaria") {
+
+        $lifeform = "Invertebrate";
+    } elsif($class eq "Insecta") {
+        $lifeform = "Insect";
+    } elsif($class eq "Reptile") {
+        $lifeform = "Reptile";
+    }
+
+    return $lifeform;
+
+
+}
+
+sub add_new_photographer {
+
+    my ($name_full) = @_;
+    my $loadfile_photographer = "";
+
+    $people_query = "select name_last, email from biocode_people where name_full = '$name_full'";
+    ($name_last, $email) = &get_one_record("$people_query");
+
+    $display_email = "nochange";
+    $contact_email = $email;
+
+    $enlarge = 3;
+    $collectn = "Biocode";
+    $copyright = "Moorea Biocode";
+    $contact_name = $name_full;
+
+    $date = &get_todays_date;
+    $index_date = &make_date($date);
+
+    # biocode_people doesn't store values in name_rest....
+    if($name_full =~ /$name_last/) {
+        $name_rest = $`;
+        $name_rest = &strip($name_rest);
+    }
+
+
+    $max_query = "select max(seq_num) from photographer;\n\n";
+    ($max_seq_num) = &get_one_record($max_query, "image");
+    $new_seq_num = $max_seq_num + 1;
+
+
+    foreach $p (@photographer_schema) {
+        if($p ne "name_full") {
+            $val = &strip(${$p});
+        } else {
+            # for unknown reasons this field kept getting nulled in the strip... so this hack. no more hours to solve it better.
+            $val = $name_full; 
+        }
+
+        if (!$val || $val eq "NULL") {
+            $val = "\\N";
+        }
+        if($p eq "seq_num") {
+            $val = $new_seq_num;
+        }
+        $loadfile_photographer .= "$val|";
+
+        # print field names in orange for debugging
+        $loadfile_for_debug .= "<font color=orange>$p=</font>|$val| ";
+        # print "<font color=red>$p=</font>|$val| ";
+    }
+
+    &load_biocode_record($loadfile_photographer,"photographer","image");  # mybiocode_utils.p
+
+    #print "<p>$loadfile_photographer<p>";
+}
+
+
+sub update_biocode_table {
+    my ($id) = @_;
+    my $update = "";
+
+    if($id =~ /^MBIO/) {
+        $update = "update biocode set pic = 1 where bnhm_id = '$id'";
+        &process_query("$update", "biocode");
+    } elsif($id =~ /^\d+$/) {
+        $update = "update biocode_collecting_event set pic = 1 where eventID = '$id'";
+        &process_query("$update", "biocode");
+    }
+    
+}
+
+
+
+
+
+
+

@@ -1,0 +1,1166 @@
+#!/usr/bin/perl
+
+# biocode_img_query ... June 2010
+
+
+
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p"; 
+require "mybiocode_utils.p";
+require "myimg_utils.p";
+
+## uncomment for system crashes
+# $CRASH = 1;  ## queries will just exit out of readParse
+$crash_date = "Fri Oct  8 10:15:08 PDT 2004";
+
+
+$tmp_dir =  "$tmp_file_location/biocode_query";
+### begin
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+&parse_input;
+
+$selectlist = "*";
+$table = "img";
+$script_name = "biocode_img_query";
+$tmp_file_dir = "/data1/tmp";
+$heading = "Moorea Biocode Collections";
+
+
+# $DEBUG = 1;
+# print "Content-type: text/html\n\n";
+
+
+
+
+###### START ###################
+
+if ($input{"enlarge"}) { # print enlargement
+     &print_enlargement($input{"enlarge"});
+
+} elsif ($input{"one"} eq "T") {  # only want one record
+    $ONE_RECORD = 1;
+    &one_record_query;
+    $stat = "DETAIL";  # for query statistics
+    &print_detail;
+
+} elsif ($input{"tmpfile"} eq "") {   # this is not a next or prev page
+
+    &build_query;  # query_utils.p
+    &do_regular_query;
+
+} elsif ($input{"tmpfile"} ne "") {  # next or prev page
+    &check_tmpfile("biocode_img_query/$input{'tmpfile'}");
+    &use_tmp_file;
+
+}
+
+###### END ###################
+
+sub print_enlargement {
+
+    my ($kwid) = @_;
+
+    @row = &get_one_record("select * from img where kwid='$kwid'", "image");
+
+    if ($row[0] > 0) {
+        &fill_fields_with_values("img");
+    } else {
+        &print_default_header("Moorea Biocode Photos");
+        print "<h3>Sorry, photo ID $kwid is not in our database.  Please try again!<br>\n";
+        print "<a href=/>Click here</a> to start a new query</h3>\n";
+        #&print_default_footer("");
+        &print_calphotos_footer;
+        return;
+    }
+    $caption = &get_caption;
+    $caption =~ s/\<br\>/\; /g;
+    $caption =~ s/\; $//g;
+    $path = &get_path_from_kwid($kwid);
+    $enlarge3 = "$IMG_PARTITION/512x768/$path";
+
+
+    $blowup_url = "http://biocode.berkeley.edu/imgs/512x768/$path\n";
+
+    chomp($blowup_url);
+
+    $title = "Moorea Biocode Photos: $caption";
+    $title =~ s/\<i\>//g;  # <i>
+    $title =~ s/\<\/i\>//g;  # </i>
+    &print_enlargement_header($caption,$title);
+    if ($blowup_url) {
+        print "<b>Using this photo</b>&nbsp;&nbsp;";
+        #print "<small>";
+        &print_enlarge_usage;  # myimg_utils.p
+        print "</small>";
+    }
+
+    if($taxon) {      # added 5/2008  - jg
+        $enlargement_alt_tag = $taxon;
+    } elsif($subject) {
+        $enlargement_alt_tag = $subject;
+    }
+    if($taxon) {      # added 6/2/2008  - jg
+        $enlargement_title_tag = $taxon;
+    } elsif($subject) {
+        $enlargement_title_tag = $subject;
+    }
+    $enlargement_alt_tag =~ s/"/ /g;
+
+    print "<br clear=left>\n";
+    print "<table align=center>";
+    if ($enlarge == 1 || !$blowup_url) {
+        print "<tr><td><h3>Sorry, the enlargement for this image is not available.<br>";
+        print "Please contact $contact for more information.</h3><br><br></td></tr>";
+    } else {
+        print "<tr><td><img src=$blowup_url alt=\"$enlargement_alt_tag\" title=\"$enlargement_alt_tag\" align=center></td></tr>\n";
+        print "<tr><td>&copy; $copyright<p></td></tr>\n";
+    }
+    print "<tr><td>";
+    print "</td></tr>\n";
+    print "</table>\n";
+
+    #&print_default_footer;
+    &print_calphotos_footer;
+}
+
+
+sub one_record_query {
+    ## seq_num or kwid or collectn+source_id or museum+specimen_no
+
+    if ($input{'seq_num'} ne "") {
+        $seq_num = $input{'seq_num'};
+        $whereclause = "WHERE seq_num = $seq_num";
+    }
+
+    elsif ($input{'where-kwid'} ne "") {
+        local($kwid) = $input{'where-kwid'};
+        $kwid =~ s/\+/ /;
+        $whereclause = "WHERE kwid = \"$kwid\"";
+    }
+    elsif ($input{'where-collectn'} ne "" && $input{'where-source_id_1'} ne "") {
+        local($collectn) = $input{'where-collectn'};
+        local($source_id_1) = $input{'where-source_id_1'};
+        $source_id_1 =~ s/\+/ /;
+        $whereclause = "WHERE collectn = \"$collectn\" and source_id_1  = \"$source_id_1\"";
+    }
+    elsif ($input{'where-museum'} ne "" && $input{'where-specimen_no'} ne "") {
+        local($museum) = $input{'where-museum'};
+        local($specimen_no) = $input{'where-specimen_no'};
+        $specimen_no =~ s/\+/ /;
+        $whereclause = "WHERE museum = \"$museum\" and specimen_no  = \"$specimen_no\"";
+    }
+
+
+    $query = "select * from img $whereclause";
+    if ($whereclause && $port eq "80") {  ## only display "ready" photos
+        $query =~ s/WHERE/WHERE ready=1 and/g;
+    }
+    @row = &get_one_record($query, "image");
+
+    local($count) = 0;
+    foreach $attr (@img_schema) {
+        $val{$attr} = $row[$count];
+        $count++;
+    }
+}
+
+
+
+sub print_detail {
+
+
+
+    &clear_all_fields("img");
+    &fill_fields_with_values("img");
+    $caption = &get_caption;
+    $heading = $caption;
+    $heading =~ s/\<br\>/\; /g;  # <br>
+    $title = $caption;
+    $title =~ s/\<i\>//g;  # <i>
+    $title =~ s/\<\/i\>//g;  # </i>
+    $title =~ s/\<br\>/\; /g;  # <br>
+    &print_calphotos_header("$heading (detail page)",$title);
+    # &print_calphotos_header("$heading (detail page)");
+
+    if (!$kwid) {
+	print "<h3>Sorry, no such photo in our database.  Please try again!<br>\n";
+	print "<a href=/>Click here</a> to start a new query</h3>\n";
+	#&print_default_footer;
+	&print_calphotos_footer;
+	return;
+    }
+
+    local($one,$two,$three,$four)= split(/ /,$kwid);
+    $pic = &get_thumbnail("$one $two $three",$four,$orient);
+
+    print "\n<table>\n";    
+    print "<tr>";
+    print "<td width=30% align=center valign=top>\n";
+    print "<small>click photo for enlargement</small><br>\n";
+
+# disable tilepics on darwin until get it working
+    if ($enlarge == 4 || $enlarge == 5) {  # tilepic available
+	if (!$taxon) {
+	    $name2send = $subject;
+	} else {
+	    $name2send = $taxon;
+	}
+	$zoom_url = &get_tilepic($kwid,$name2send);
+	print "<small>or <a href=$zoom_url>ZOOM</a> (java required)</small> <br>";
+    }
+    print "$pic<br>";
+    print "$caption\n";
+    print "</td>\n";
+
+
+    print "<td align=left valign=middle>";
+
+    print "Photographer: ";
+    if ($photographer ne "Unknown") {
+        $photog_url = &get_photographer_url($photographer);
+        print "<a href=$photog_url>$photographer</a><br>\n";
+    } else {
+	print "Unknown<br>\n";
+    }
+    if ($collectn !~ /Private/) {
+	$coll_url = "/$collectn.html";
+	print "Collection: <a href=http://biocode.berkeley.edu>Biocode</a><br>\n" ;
+    }
+    if ($project) {
+	if ($project eq "Phototaxonomy Project") {
+	    $proj_url = "http://www.cnps.org/photography/index.htm";
+	    print "Project: <a href=\"$proj_url\">$project</a><br>\n" ;
+	} else {
+	    print "Project: $project<br>\n" ;
+	}
+    }
+
+    print "<br><small>ID: $kwid ($index_date)</small>";
+    if ($copyright) {
+	print "<p><small>Copyright &copy; $copyright</small><br>\n";
+    } 
+
+    print "</td></tr></table>\n";
+
+
+    ### bottom part of page
+
+    $taxurl = $taxon;
+    $taxurl =~ s/ /\+/g;
+    $url_kwid = "$kwid";
+    $url_kwid =~ s/ /+/g;
+
+    ## About the Photo
+
+    print "<table>\n";
+
+
+
+    ## from the photog.
+    print "<tr><td><font color=23238E>";
+    print "<small>INFORMATION PROVIDED WITH THE PHOTO</small>\n";
+    print "</td></tr>\n";
+
+    print "<tr><td>";
+    print "<li><b>date of photo</b>&nbsp;&nbsp;";
+    if ($photo_date && $photo_date ne "0000-00-00") {
+	$pdate = &make_pretty_date2($photo_date,$date_prec);
+    } else {
+	$pdate = "unknown";
+    }
+    print "$pdate\n";
+
+    ## collected date
+    if ($coll_year) {
+	print "<li><b>date collected</b>&nbsp;&nbsp;";
+	if ($coll_month) {
+	    $coll_month = sprintf("%02d",$coll_month);
+	    $moname=$mo_nums{$coll_month};
+	    if ($coll_day) {
+		print "$moname $coll_day, $coll_year\n";
+	    } else {
+		print "$moname $coll_year\n";
+	    }
+	} else {  # no month
+	    print "$coll_year\n";
+	}
+    }
+
+    if ($lat && $lng) {
+	$lat = sprintf("%.5f",$lat);
+	$lng = sprintf("%.5f",$lng);
+        # $google_maps = "http://www.google.com/maps?f=q&hl=en&q=$lat++$lng&ie=UTF8&z=13&t=k&om=1"; # satellite image
+        $google_maps = "http://www.google.com/maps?f=q&hl=en&q=$lat++$lng&ie=UTF8&om=1&z=5";       # map
+	print "<li><b>latitude</b> $lat &nbsp;&nbsp;<b>longitude</b> $lng ";
+	print "<small>\n";
+        print "&nbsp; &nbsp; View on <a href=$google_maps>Google Maps</a>.\n";
+	print "</small>";
+	
+    }
+
+    ## location / captivity
+    
+    if ($lifeform eq "histology") {
+	# don't print location
+
+    } elsif ($captivity == 1 && 
+	#($genre ne "Landscape" && $genre ne "People" && !$specimen_no)) {
+	($genre eq "Animal" || $genre eq "Fungi" || $genre eq "Plant")) {
+	$lc_genre = lc($genre);
+	if ($lc_genre eq "animal") {
+	    print "<li><b>this photo depicts an animal that was captive or collected";
+	} else {
+	    print "<li><b>this photo depicts a $lc_genre that was cultivated or collected in the wild";
+	}
+	print "</b></small>\n";
+	if ($cap_loc) {
+	    print "<li><b>photo location</b>&nbsp;&nbsp; $cap_loc\n";
+	}
+	
+	print "<li><b>$lc_genre\'s place of origin</b>&nbsp;&nbsp;\n";
+	&print_detail_location;
+    } else {
+	print "<li><b>location</b>&nbsp;&nbsp;";
+	&print_detail_location;
+    }
+    if ($family) {
+        print "<li><b>family</b> ";
+	print "<a href=/cgi/biocode_img_query?where-family=$family&rel-family=eq&where-collectn=biocode>";
+        print "$family</a>";
+    }
+    if($ordr) {
+        print "<li><b>order</b> ";
+	print "<a href=/cgi/biocode_img_query?where-ordr=$ordr&rel-ordr=eq&where-collectn=biocode>";
+        print "$ordr</a>";
+    }
+    if($class) {
+        print "<li><b>class</b> ";
+	print "<a href=/cgi/biocode_img_query?where-class=$class&rel-class=eq&where-collectn=biocode>";
+        print "$class</a>";
+    }
+
+        
+    ## Inhabitants
+    if ($inhabitants) {
+	print "<li><b>species</b> associated with this habitat: ";
+	$pic_url = "/cgi/biocode_img_query?rel-taxon=begins+with&where-taxon=";
+	@inhabs = split(/\,/,$inhabitants);
+	foreach $i (@inhabs) {
+	    $url_taxon = $i;
+	    $url_taxon =~ s/ /+/g;
+	    $i =~ s/ /\&nbsp\;/g;
+	    print "<a href=$pic_url$url_taxon>$i</a></small>&nbsp;&nbsp; ";
+	}
+    }
+    if ($photog_notes) {
+        if($collectn ne "MVZ") {
+	    print "<li><b>notes </b>&nbsp;&nbsp;";
+        } else { 
+	    print "<li><b>description </b>&nbsp;&nbsp;";
+        }
+	print "$photog_notes";
+    }
+
+    if ($photo_info) {
+	print "<li><b>camera </b>&nbsp;&nbsp;";
+	print "$photo_info";
+    }
+    
+    if ($source_id_1) {
+        print "<li><b>collector specimen number</b></small>&nbsp;&nbsp;";
+        print "$source_id_1";
+    }
+    if ($source_id_2) {
+        print "<li><b>contributor's ID #</b></small>&nbsp;&nbsp;";
+        print "$source_id_2";
+    }
+
+    ## print original filename -- right now only for Moorea Biocode photos
+    if($collectn eq "Biocode") {
+        print "<li><b>original filename</b></small>&nbsp;&nbsp;$orig_filename";
+    }
+
+    ## print name of museum
+    # if ($specimen_no && $museum) {  # changed 3/20/08 GO
+    if ($museum && $museum ne "none") {
+	if ($museum eq "Moorea Biocode") {
+	    $mus_url = "http://biocode.berkeley.edu/cgi";
+	    print "<li><b>From the collection of</b> Moorea Biocode &nbsp;&nbsp;";
+	} else {
+	    print "<li><b>From the collection of</b> $museum &nbsp;&nbsp;";
+	}
+    }
+
+    ## If there is a specimen number, print it (prints more than one)
+
+    if ($specimen_no && $museum) {
+	@spec_nums = split(/\,/,$specimen_no);
+        foreach $s (@spec_nums) {
+	    if ($museum eq "Moorea Biocode") {
+		if($specimen_no =~ /EventID\s+(\d+)/) {
+		    $eventid = $1;
+		    $spec_url = "$mus_url/biocode_collect_event_query?EventID=$eventid&one=T";
+		    print "Collecting Event No. <a href=$spec_url>$eventid</a>.";
+		} else {
+		    $spec_url = "$mus_url/biocode_query?bnhm_id=$specimen_no&one=T";
+		    print "Specimen No. <a href=$spec_url>$specimen_no</a>.";
+		}
+	    } else { # it's some random museum and we got a specno
+		print " Specimen No. $s";
+	    }
+	}
+
+        ## Print link to other photos of this specimen number
+	## this should work for all specimens (i.e., non-UCB specimens)
+	if ($lifeform ne "fieldsite" && $specimen_no) {
+	    $spec_no_url = $specimen_no;
+	    $spec_no_url =~ s/ /\+/g;
+            $museum_url = $museum;
+	    $museum_url =~ s/ /\+/g;
+	    print "<li><a href=/cgi/biocode_img_query?where-specimen_no=$spec_no_url&where-museum=$museum_url>View all photos</a>";
+	    print " for this specimen\n";
+	}
+    }
+    print "<li><font color=999999><b>photo category:</b> $genre - $lifeform</font>\n";
+    print "<li><font color=999999><b>original filename:</b> $orig_filename</font>\n";
+    print "<br></td></tr>\n";
+
+    ## More Information about ...
+
+    if ($taxon && uc($taxon) !~ /UNKNOWN/ && uc($taxon) !~ /UNAVAILABLE/) {
+	print "<tr><td><br><font color=23238E>";
+	$genretype = uc($genre);
+	$genretype =~ s/FUNGI/FUNGUS/;
+	if ($genre eq "Misc.") {
+	    print "<small>MORE INFORMATION";
+	} else {
+	    print "<small>MORE INFORMATION ABOUT THIS $genretype";
+	}
+	print "</small><br> ";
+	print "</small></tr></td>\n";
+	
+
+
+	
+    }
+    print "<tr><td>";
+
+    if ($taxon && (uc($taxon) ne "UNKNOWN") && uc($taxon) !~ /UNAVAILABLE/) { 
+        &print_taxon_info;
+    }
+
+    print "</td></tr>\n";
+
+    ## Annotations
+
+#    print "<tr><td>";
+#    &print_detail_anno;
+#    print "</td></tr>\n";
+
+    ## Usage
+
+    print "<p><tr><td><br>";
+    print "<b>Using this photo</b>&nbsp;&nbsp; ";
+    &print_thumbnail_usage($photographer);
+    print "</i></small>";
+    print "</i><br><p></td></tr>\n";
+
+
+    print "</table><br>&nbsp;<br>\n";
+
+    &print_calphotos_footer;
+}
+
+
+
+sub use_tmp_file {
+
+    if ($DEBUG) {$debug_msg .= "<p>In use_tmp_file<p>";}
+
+    $whereclause = $input{'prevwhere'};
+    if ($input{title_tag}) {
+        $title = $input{title_tag};
+        $title =~ s/\+/ /g;
+        $heading = $title;
+        &print_calphotos_header($heading,$title);
+    } else {
+        &print_calphotos_header($heading);
+    }
+    &check_max; # query_utils.p
+    $query_results = "$tmp_file_dir/biocode_img_query/$input{'tmpfile'}";
+    &print_multiple_records;
+}
+
+
+sub use_tmp_file {
+
+    if ($DEBUG) {$debug_msg .= "<p>In use_tmp_file<p>";}
+
+    $whereclause = $input{'prevwhere'};
+    if ($special eq "amphibiaweb") {
+        $names = $input{'where-taxon'}."|".$input{'cname'}."|";
+        $names .= $input{'frost_spelling'}."|".$input{'rangemap'}."|";
+        $names .= $input{'ready'}."|".$input{'family_url'}."|".$input{'sound'}."|";
+        $names .= $input{etymology}."|".$input{isocc}."|".$input{family}."|".$input{iucn}."|".$input{'intro_isocc'};
+        &print_amphibiaweb_header($names);
+    } else {
+        if ($input{title_tag}) {
+            $title = $input{title_tag};
+            $title =~ s/\+/ /g;
+            $heading = $title;
+            &print_calphotos_header($heading,$title);
+            # &print_calphotos_header($heading);
+        } else {
+            &print_calphotos_header($heading);
+        }
+    }
+    &check_max; # query_utils.p
+    $query_results = "$tmp_file_dir/img_query/$input{'tmpfile'}";
+    &print_multiple_records;
+}
+
+
+sub do_regular_query {
+
+    if ($DEBUG) {$debug_msg .= "<h4>In do_regular_query</h4>whereclause: $whereclause\n<p>";}
+
+    if ($input{title_tag}) {
+        $title = $input{title_tag};
+        $title =~ s/\+/ /g;
+        $heading = $title;
+        &print_calphotos_header($heading,$title);
+        # &print_calphotos_header($heading);
+    } else {
+        &print_calphotos_header($heading);
+    }
+
+
+    if (!$whereclause) {
+        $whereclause = "nothing selected";
+        print "<h3>Error: Please go back and select at least one field to query on.</h3>";
+        # &print_default_footer;
+        &print_calphotos_footer;
+        return;
+    }
+
+# print "Query: $query";
+# exit;
+
+    $tmp = &get_multiple_records($query, "image");  # query_utils.p
+    if ($DEBUG) {
+        print "<h3>do_regular_query tmp: $tmp </h3>\n";
+    }
+    if ($error) {
+        $debug_msg .= "<h3>$error</h3>";
+        # &print_default_footer;
+        &print_calphotos_footer;
+        return;
+    }
+    &check_max;  # query_utils.p
+    if ($default_max) {
+        $max_rows = 20;
+    }
+
+    if ($num_matches eq 0) {
+        print "<h4>Sorry - no matches. Please try again.</h4>";
+        print "<b>Query:</b> $query<p>\n";
+        print "<h4><a href=/trouble.html>Click here for troubleshooting hints</a><br>&nbsp;&nbsp;<p>";
+
+        # &print_default_footer;
+        &print_calphotos_footer;
+        return;
+    }
+
+    # print "Content-type: text/html\n\n";
+    # print "QUERY: $query<p>";
+
+    $query_results = $tmp;
+    &print_multiple_records;
+}
+
+
+sub print_multiple_records {
+
+    if ($DEBUG) {$debug_msg .= "<p>In print_multiple_records<p>";}
+
+    print "<small><b>Query: </b>$query<br><p></small>\n" if ($query);
+
+    print "<p><center><b><i>Click on the thumbnail to see an enlargement</b></i></center><p>\n";
+    print "<table width=100%>\n";
+    &print_table_cells;
+    print "</table>\n";
+    print "<p>";
+    print "<b>Using these photos:</b> <small>";
+    print "A variety of organizations and individuals have contributed ";
+    print "photographs to CalPhotos. ";
+    print "Please follow the usage guidelines provided with each image. ";
+    print "Use and copyright information, as well as other details about the ";
+    print "photo such as the date and the location, are available ";
+    print "by clicking on the ";
+    print "<b>[detail]</b> link under the thumbnail. ";
+    print "See also: <a href=http://calphotos.berkeley.edu/use.html>Using the Photos in CalPhotos</a>.";
+    print "</small>&nbsp;&nbsp;<br><p>\n";
+
+    &print_calphotos_footer;
+}
+
+
+sub print_table_cells {
+
+    if ($DEBUG) {$debug_msg .= "<p>In print_table_cells<p>";}
+
+    open(FH, "$query_results") || die "Can't open tmp $query_results file for reading";
+    my $count = 0;
+    my $num_imgs_so_far = 1;
+    my $num_imgs_per_row = 4;
+    print "\n<tr>\n";
+
+    while(<FH>) {
+
+        if ($DEBUG) {$debug_msg .= "<dd>count=$count...row_to_start=$row_to_start...max_rows=$max_rows";}
+        if(($count < ($row_to_start + $max_rows)) && ($count >= $row_to_start)) {
+            # time to start a new row?
+            if ($num_imgs_so_far > $num_imgs_per_row) {
+                print "\n</td></tr><tr>";
+                $num_imgs_so_far = 1;
+            }
+
+            @row = split(/\t/,$_);
+
+            &fill_fields_with_values("img");
+
+            my ($one,$two,$three,$four)= split(/ /,$kwid);
+            $thumbnail = &get_thumbnail("$one $two $three",$four,$orient);
+
+            print "<td valign=top align=center>";
+            print "<small>";
+            print "$thumbnail<br>";
+            $caption = &get_caption;
+            print "$caption<br>";
+            if($source_id_1) {
+                print "<small><font color=999999>$source_id_1</font></small><br> ";
+            }
+            print "<small><font color=999999>ID: $kwid</font></small> ";
+            print "<a href=/cgi/biocode_img_query?seq_num=$seq_num&one=T>";
+            print "[detail]</a><br>";
+
+            print "&copy; $copyright<br>";
+
+            ## ID reviewed/not reviewed
+            if($where{anno}) {
+                &print_IDreviewed;
+                print " ";
+            }
+
+            print "<br><p></small></td>\n";
+            $num_imgs_so_far++;
+        }
+        $count++;
+    }
+    print "</td></tr>\n";
+    close(FH);
+
+
+
+}
+
+
+
+
+sub get_caption {
+    $caption = "";
+
+    if ($genre eq "Landscape") {
+	if ($subject) {
+	    $caption = $subject;
+	} elsif ($location || $state || $country || $continent || $other_county || $other_state || $island || $island_group) {
+	    &get_location_caption;
+	} elsif ($photog_notes) {
+	    $caption = &get_short_version($photog_notes, "6");
+            # $caption = $photog_notes;
+	}
+	
+
+    } elsif ($genre eq "Misc.") {
+	if ($subject && $lifeform eq "nature") {
+	    $caption = $subject;
+	} elsif ($subject && $lifeform eq "other") {
+	    $caption = $subject;
+	} elsif ($subject && $lifeform eq "drawing") {
+	    $caption = $subject;
+	} elsif ($subject && $lifeform eq "geology") {
+	    $caption = $subject;
+	} elsif ($lifeform eq "drawing") {
+	    $caption = &get_short_version($photog_notes, "6");
+	} elsif ($lifeform eq "specimen_tag") {
+	    $caption = "UCMP specimen card";
+	} elsif ($lifeform eq "histology") {
+	    if ($subject) {
+		$caption = $subject;
+		if ($taxon) {
+		    $caption .= "<br><i>$taxon</i>";
+		}
+		if ($ph_cname) {
+		    $caption .= "&nbsp;&nbsp;$ph_cname";
+		}
+	    } elsif ($taxon) {
+		$caption = "<i>$taxon</i>";
+	    }
+
+	}
+    } elsif ($genre eq "Plant" || $genre eq "Animal" || $genre eq "Fossil" ||
+	     $genre eq "Fungi" || $genre eq "Protista" || $genre eq "Bacteria") {
+
+	if ($taxon && $taxon ne "Unknown" && $taxon ne "Not recorded") {
+	    $caption = "<i>$taxon</i>";
+	} elsif ($family) {
+            $caption = "$family Family";
+	} elsif ($ordr) {
+	    $caption = "$ordr Order";
+        } elsif ($class) {
+            $caption = "$class Class";
+	} elsif ($phylum) {
+	    $caption = "$phylum Phylum";
+        } elsif ($subject) {
+	    $caption = "$subject";
+        } elsif ($photog_notes) {
+	    $caption = &get_short_version($photog_notes, "6");
+	}
+	
+	### print photographer's cname first
+	if ($ph_cname) {
+	    if (length($ph_cname) > $MAX_CNAME_LEN) {  ## really long common names
+		local(@longnames) = split(/\,/,$ph_cname);
+		$phcname2print = $longnames[0];
+	    } else {
+		$phcname2print = $ph_cname;
+	    }
+	    
+	    if ($caption) {
+		$caption .= "<br>$phcname2print";
+	    } else {
+                $caption = $phcname2print;
+            }
+	} elsif ($cname) {
+	    if (length($cname) > $MAX_CNAME_LEN) {  ## really long common names
+		local(@longnames) = split(/\,/,$cname);
+		$cname2print = $longnames[0];
+	    } else {
+		$cname2print = $cname;
+	    }
+	    if ($caption) {
+		$caption .= "<br>$cname2print";
+	    } else {
+		$caption = $cname2print;
+	    }
+	} 
+	
+    } elsif ($genre eq "People") { 
+	if ($subject) {
+	    $caption = $subject;
+        } elsif ($taxon) {
+	    $caption = $taxon;  # might be a caption here
+	} elsif ($photog_notes) {
+	    # $caption = $photog_notes;  # or here
+	    $caption = &get_short_version($photog_notes, "6");
+	} elsif ($location || $state || $country || $continent) {
+	    &get_location_caption;
+	} else {
+	    $caption = $namesoup;
+	}
+    }
+    if ($taxon2) {
+	if ($taxon2 !~ /\,/) { # don't link for long lists
+	    $t_url = $taxon2;
+	    $t_url =~ s/ /\+/g;
+	    $tax2link = "/cgi/biocode_img_query?where-taxon=$t_url&title_tag=$t_url";
+	    $caption .= "<br><small>(shown with <i><a href=$tax2link>$taxon2</a></i>)</small>";
+	} else {
+	    $caption .= "<br><small>(shown with <i>$taxon2</i>)</small>";
+	}
+    }
+    return $caption;
+}
+
+
+
+
+
+
+sub print_detail_location {
+
+    if($county eq "unselected") { $county = ""; }       # JG added 8/24/00
+
+    if($state eq "unselected") { # JG added 8/24/00
+	$state = ""; 
+    } elsif ($state) {
+	$print_state = &get_state_name($state);
+    }
+    if($country eq "unselected") { $country = ""; }     # JG added 8/24/00
+    if($continent eq "unselected") { $continent = ""; } # JG added 8/24/00
+
+    if ($location) {
+	$location =~ s/^\,//;  # compensate for add_photos bug
+	$gotta_loc = 1;
+	print "$location";
+	if ($county || $other_county || $state || $other_state 
+	    || $country || $continent || $island || $island_group) {
+	    print " (";
+	    $parens = 1;
+	}
+    } elsif (!$county && !$other_county  && !$state && !$other_state
+	     && !$country && !$continent && !$island && !$island_group){
+	print "not provided";
+    }
+
+    if ($county) {
+	if ($state eq "CA") {
+	    print "$county_codes{$county} County";
+	} else {
+	    print "$county County";
+	}
+    } elsif ($other_county) {
+	print "$other_county";
+    }
+
+    if ($state) {
+	if ($county || $other_county) {
+	    print ", $print_state";
+	} else {
+	    print "$print_state";
+	}
+    } elsif ($other_state) {
+	if ($county || $other_county) {
+            print ", $other_state";
+        } else {
+            print "$other_state";
+        }
+    }
+
+    if ($island) {
+	if ($state || $county || $other_state || $other_county) {
+	    print ", $island";
+	} else {
+	    print "$island";
+	}
+	if ($island_group) {
+	    print " ($island_group)";
+	}
+    }
+    elsif ($island_group) {
+	if ($state || $county || $other_state || $other_county) {
+	    print ", $island_group";
+	} else {
+	    print "$island_group";
+	}
+    }
+    
+    if ($country) {
+	$cou_name = &get_country_name($country);
+	if ($state || $county || $other_state || $other_county || $island || $island_group) {
+
+	    if ($country eq "US") {  # leave it short
+		print ", $country";
+	    } else {
+		print ", $cou_name";
+	    }
+
+        } else {
+            print "$cou_name";
+        }
+    }
+    if ($continent) {
+	if (!$state && !$county && !$country) {
+            print "$continent";
+        }
+    }
+   
+    if ($parens) {
+        print ")";
+    }
+
+
+}
+
+
+
+sub print_detail_anno {
+
+    ## img table:  id_confirm is 1 or 0 or null
+
+    # if ($specimen_no) {
+	# don't print anything - it's a specimen
+
+    if ($genre eq "Landscape" || $genre eq "People" || $genre eq "Misc.") {
+	# don't print anythingout
+	
+    } elsif ($id_confirm) {  ## there's an annotation
+
+	local($anno_query) = "select name,date_time,action,annotation,prev_taxon_id,new_taxon_id from img_anno where kwid=\"$kwid\" ";
+	local($tmp) = &get_multiple_records($anno_query,"image"); 
+	if ($DEBUG) {
+	    print "<h3>print_detail_anno tmp: $tmp </h3>\n";
+	}
+	print "<br><br><b>Reviewers' comments about this photo</b>";
+	print " (<a href=/cgi/img_anno_query?kwid=$url_kwid>";
+	print "review or add another comment</a>)";
+	$query_results = "/data1/tmp/img_query/$tmp";
+	open(QR, "$query_results") || die "Can't open tmp file for reading";
+	## print "<dd>$query_results";
+
+	local($annonum) = 1;
+	while (<QR>) {
+	    ($rev_name,$rev_time,$rev_action,$rev_annotation,$prev_taxon_id,$new_taxon_id) = split(/\t/,$_);
+	    ($rev_date,$junk) = split(/ /,$rev_time);
+	    if ($rev_action eq "confirmID") {
+		$rev_action = "ID confirmed";
+	    } 
+	    elsif ($rev_action eq "correctID") {
+		$rev_action = "changed name from \"$prev_taxon_id\" to \"$new_taxon_id\"";
+            }
+	    elsif ($rev_action eq "comment") {
+                $rev_action = "commented on photo";
+	    }
+	    elsif ($rev_action eq "updateID") {
+		$rev_action = "updated the name from \"$prev_taxon_id\" to \"$new_taxon_id\"";
+	    }
+	    elsif ($rev_action eq "correctOther") {
+		$rev_action = "correction";
+            }
+	    if ($rev_date =~ /1800-01-01/) {
+		$pretty_rev_date = "pre-2001";
+	    } else {
+		$pretty_rev_date = &make_pretty_date2($rev_date,"exactday");
+	    }
+
+	    $rev_name_url = $rev_name;
+	    $rev_name_url =~ s/ /\+/g;
+
+
+            print "<br>";
+            print "<table cellspacing=0 cellpadding=0 border=0>";
+            print "<tr>";
+
+            print "<td>";
+            print "$annonum. ";
+            print "</td>";
+
+            print "<td>";
+            print "Reviewed by ";
+            print "<a href=/cgi/reviewers_query?one=T&name=$rev_name_url>$rev_name</a> ";
+
+            print "&nbsp;&nbsp; $pretty_rev_date";
+            print "</td>";
+
+            print "</tr>";
+            print "<tr>";
+
+            print "<td>";
+            print "<br>";
+            print "</td>";
+
+            print "<td>";
+            print "Action: $rev_action";
+            print "</td>";
+
+            print "</tr>";
+            print "<tr>";
+
+            print "<td>";
+            print "<br>";
+            print "</td>";
+
+            print "<td>";
+	    if ($rev_annotation && $rev_annotation != / +/) {
+		$rev_anno = &strip($rev_annotation);
+		if ($rev_anno) {
+		    print "Reviewer's comments:";
+		    print "</td></tr><tr><td></td><td>";
+		    print "<table cellspacing=0 cellpadding=0 border=0>";
+		    print "<tr>";
+		    print "<td>";
+		    print "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+		    print "</td>";
+		    print "<td>";
+		    print "\"$rev_anno\"";
+		    print "</td>";
+		    print "</tr>";
+		    print "</table>";
+		}
+	    } else {
+	        print "<br>";
+	    }
+            print "</td>";
+
+            print "</tr>";
+            print "</table>";
+
+	    $annonum++;
+	}
+	print "</small>\n";
+	close(QR); 
+
+    } else {  # no annotations
+	if ($taxon && (uc($taxon) ne "UNKNOWN") && uc($taxon) !~ /UNAVAILABLE/) {
+	    print "<br><br>The photographer's identification <i>$taxon</i> has not been reviewed. ";
+	    print "<a href=/cgi-bin/img_anno_query?kwid=$url_kwid>Click here</a>";
+            print " to review or comment on the identification.";
+	} else {
+	    print "<br><br>Genus and species were not provided for this photo. ";
+	    print "<a href=/cgi-bin/img_anno_query?kwid=$url_kwid>Click here</a>";
+	    print " to review the identification or add a comment.";
+	}
+    }
+
+}
+
+
+
+
+sub print_taxon_info {
+
+    ($genus,$species) = split(/ /,$taxon);
+
+
+    ## common names
+
+    if ($cname || $ph_cname) {
+	print "<li><b>common names</b>&nbsp;&nbsp;\n";
+    } 
+    if ($cname) {
+	print "$cname ";
+	if ($cname_source && $cname_source ne "NOT_FOUND") {
+	    print " (";
+	    @cname_srcs = split(/\,/,$cname_source);
+	    $got_one = 0;
+	    foreach $i (@cname_srcs) {
+		if ($got_one) {
+		    #print ", $prettyname{$i}";
+		    print ", $i";
+		} else {
+		    #print "$prettyname{$i}";
+		    print "$i";
+		    $got_one = 1;
+		}
+	    }
+	    print " )\n";
+	} else {
+	    print "\n";
+	}
+    } 
+    # url_type is used for misc. common names
+    if ($ph_cname) {
+	if ($url_type eq "ASW") {
+	    print "$ph_cname (ASW)\n";
+	} elsif ($collectn eq "UCJEPS" && $url_type) {
+	    print "$ph_cname ($url_type)\n";
+	} else {
+	    print "$ph_cname (photographer)\n";
+	}
+    } 
+
+    
+
+    ## Plants
+    if ($genre eq "Plant") { 
+	local($genus,$species,$junk,$infraspecies) = split(/ /,$taxon);
+
+	if ($genus && $species && $genus ne "Unknown" && $species !~ /^sp/) {
+	    print "<li><a href=$plants_url$genus+$species>Check the Plants Database</a> <small>(USDA website)</small>";
+	}
+
+    }
+
+    if (($genre eq "Animal" || $genre eq "Plant") && $taxon) {
+        print "<li><a href=\"http://eol.org/$taxon\">View Encyclopedia of Life record</a> for <i>$taxon</i>";
+    }
+
+    if ($taxon && $taxon ne "Unknown") {
+	print "<li><a href=/cgi/biocode_img_query?where-taxon=$taxurl&rel-taxon=begins+with&where-collectn=biocode&title_tag=$taxurl>";
+	print "View all photos in Moorea Biocode</a> of <i>$taxon</i> ";
+
+	print "<li><a href=http://calphotos.berkeley.edu/cgi/img_query?where-taxon=$taxurl&where-lifeform=specimen_tag&rel-lifeform=ne&rel-taxon=begins+with&title_tag=$taxurl>";
+	print "View all photos in CalPhotos</a> of <i>$taxon</i> ";
+
+	print "<li><a href=http://images.google.com/images?q=$taxurl>";
+	print "Check Google Images</a> for <i>$taxon</i> ";
+    }
+}
+
+
+sub get_location_caption {
+
+    if ($location && uc($location) ne "UNKNOWN") {
+        if ($caption) {
+            $caption .= "<br>$location";
+        } else {
+            $caption = $location;
+        }
+    }
+    if ($county) {
+        if (!$location || uc($location) eq "UNKNOWN") {
+            $print_county = &get_county_name($county);
+            $caption .= "$print_county County";
+        }
+    } elsif ($other_county) {
+        if (!$location || uc($location) eq "UNKNOWN") {
+            $caption .= "$other_county";
+        } else {
+            $caption .=  ", $other_county";
+        }
+    }
+    if ($state) {
+        $print_state = &get_state_name($state);
+        if (!$caption) {
+            $caption = "$print_state";
+        } else {
+            $caption .= " ($print_state)";
+        }
+    } elsif ($other_state) {
+        if ($location || $county || $other_county) {
+            $caption .=  ", $other_state";
+        } else {
+            $caption .=  "$other_state";
+        }
+    }
+
+    if ($island) {
+        if (!$caption) {
+            $caption =  "$island";
+        } else {
+            $caption .=  ", $island";
+        }
+        if ($island_group) {
+            $caption .=  " ($island_group)";
+        }
+    }
+    elsif ($island_group) {
+        if (!$caption) {
+            $caption .=  "$island_group";
+        } else {
+            $caption .=  ", $island_group";
+        }
+    }
+
+    if ($country && !$state) {
+        $print_country = &get_country_name($country);
+        if ($caption) {
+            $caption .= ", $print_country";
+        } else {
+            $caption = "$print_country";
+        }
+    }
+    if ($continent && !$country && !$state) {
+        if ($caption) {
+            $caption .= " ($continent)";
+        } else {
+            $caption = "$continent";
+        }
+    }
+}
+
+
+
+

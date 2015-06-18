@@ -1,0 +1,4005 @@
+#!/usr/bin/perl
+
+# biocode_add_specimens
+# Ginger Ogle 1/7/04 for MySQL
+
+# adapted 12/04 for updates
+
+# $DEBUG=1;
+
+require "utils.p";
+require "myquery_utils.p";
+require "myschema.p";
+require "mybiocode_utils.p";
+require "biocode_settings";
+
+## uncomment for system crashes
+#$CRASH = 1;  ## queries will just exit out of readParse
+#$crash_date = "Tue Apr 21 18:30:54 PDT 2009";
+
+$help_win_link = "<a href=\"javascript:Help_Window('/cgi/biocode_help?page";
+
+&readParse(*input) || print "    <p>No input data processed.<p>\n";
+
+$its_an_update = 0;
+
+####
+# mode: newrecord|update|clone|load2essig
+####
+if  ($input{'mode'} eq "update") {
+    $its_an_update = 1;
+    $heading = "Biocode: Update a Specimen Record";
+    $form_bg_color = $lt_sage_color;
+    $javascript_in_bodytag = "onload='runIt();'";
+
+} elsif ($input{'mode'} eq "newrecord") {
+    $heading = "Biocode: Add a New Specimen Record";
+    $form_bg_color = $lt_bluegray_color;
+    $javascript_in_bodytag = "onload='runIt();'";
+
+} elsif ($input{'mode'} eq "clone") {
+    $heading = "Biocode: Create a New Specimen Record using an Existing Record";
+    $form_bg_color = $lt_bluegray_color;
+    $clone_record = 1;
+    $javascript_in_bodytag = "onload='runIt();'";
+
+} elsif ($input{'mode'} eq "load2essig") {
+
+    # Added these 2 lines May 2009. Copy doesn't work since schema change in Apr/May 2009.
+    print "Content-type: text/html\n\n";
+    print "Copy to Essig is temporarily disabled. Please contact Joyce or John if you want to use this feature.<p>";
+    exit;
+
+    $heading = "Biocode: Copy a record to Essig";
+    &print_biocode_header($heading);
+    &loadbiocode2essig;
+    if ($error_found) {
+        print "<h4>Sorry, there's a problem:</h4>\n";
+        print "<p>Errors: <ul>$error_found</ul>";
+        print "<p>Comments: <ul>$copy_cmts</ul>";
+    } else {
+        print "<h4>$essig_val{OtherCatalogNumbers} was successfully copied to the Essig database ($essig_val{bnhm_id}).</h4>\n";
+        print "<a href=http://essigdb.berkeley.edu/cgi/eme_query?bnhm_id=$essig_val{bnhm_id}&one=T>Click here</a> to view it.\n";
+        if ($copy_cmts) {
+            print "<p>Comments:<ul>$copy_cmts</ul>\n";
+        }
+    }
+    &print_biocode_footer;
+    &send_email;
+    exit;
+
+} else {
+    $bad_msg .= "Please indicate whether you are correcting a record or creating a new one";
+    $heading = "Moorea Biocode Database Administrative Actions";
+    &print_biocode_err_and_exit;
+}
+
+#####
+# step 2 ready to load it - check input
+#####
+if ($input{'special'} eq "load") {
+    &check_input;
+    if ($bad_msg) {
+        &print_biocode_form_header($heading, $form_bg_color, $javascript_in_bodytag);
+        &print_form;
+        &print_biocode_form_footer;
+
+    } elsif ($input{'mode'} eq "update") {
+        &update_record;
+        &send_email;
+        &print_biocode_form_header($heading, $form_bg_color, $javascript_in_bodytag);
+        print "<b>Collection ID \# $input{bnhm_id} was successfully updated</b>\n";
+        print "<br>\n";
+        print "<a target=new ";
+        print "href=/cgi/biocode_query?bnhm_id=$input{bnhm_id}&one=T>click here to view this record</a> &nbsp;&nbsp;\n";
+        print "<a target=new ";      # JG added for biocode
+        print "href=/cgi/biocode_add_tissue?bnhm_id=$input{bnhm_id}&table=biocode>";
+        print "add a tissue record for this specimen</a> &nbsp;&nbsp;\n";
+#        print "<a target=new ";      # JG added for biocode
+#        print "href=/cgi/biocode_add_photo?bnhm_id=$input{bnhm_id}&table=biocode>";
+#        print "add a photo of this specimen</a> \n";
+
+        ## need firstscreen?
+        print "<p><b>Update Another Record</b>:\n";
+
+        print "<blockquote>\n";
+
+        print "<table>\n";
+        print "<tr>\n";
+        print "<td>\n";
+
+        print "<FORM name=parentform ACTION=\"/cgi/biocode_add_specimens\" METHOD=\"post\">";
+        print "By Biocode ID (ie, MBIO1234):<INPUT type=hidden name=mode value=update>";
+        print "</td><td>\n";
+        print "<INPUT type=hidden name=entry_by value=\"$input{entry_by}\">";
+        print "<INPUT name=bnhm_id> <INPUT TYPE=\"submit\" VALUE=\"Go\">";
+        print "</form>";
+        print "</td>\n";
+        print "</tr>\n";
+
+        print "<tr>\n";
+        print "<td>\n";
+
+        print "<FORM name=parentform ACTION=\"/cgi/biocode_add_specimens\" METHOD=\"post\">";
+        print "By Specimen No.(ie, BMOO-1234): <INPUT type=hidden name=mode value=update>";
+        print "</td><td>\n";
+        print "<INPUT type=hidden name=entry_by value=\"$input{entry_by}\">";
+        print "<INPUT name=Specimen_Num_Collector> <INPUT TYPE=\"submit\" VALUE=\"Go\">";
+        print "</form>";
+
+        print "</td>\n";
+        print "</tr>\n";
+        print "</table>\n";
+
+        print "</blockquote>\n";
+
+        &print_biocode_form_footer;
+
+
+    } elsif ($input{GetNextCollEventID}) {
+	&load_record;
+        &send_email;
+    	&print_biocode_form_header($heading, $form_bg_color);
+        print "<b>Specimen $input{bnhm_id} from Collecting Event \# $input{Coll_EventID} was successfully added</b>\n";
+        print "<p><small><a target=new ";
+    	print "href=/cgi/biocode_query?bnhm_id=$input{bnhm_id}&one=T>";
+        print "click here to view it</a></small> &nbsp;&nbsp;\n";
+
+    	print "<small><a target=new ";      # JG added for biocode
+    	print "href=/cgi/biocode_add_tissue?bnhm_id=$input{bnhm_id}&table=biocode>";
+    	print "add a tissue record for this specimen</a></small> &nbsp;&nbsp;\n";
+#    	print "<small><a target=new ";      # JG added for biocode
+#    	print "href=/cgi/biocode_add_photo?bnhm_id=$input{bnhm_id}&table=biocode>";
+#    	print "add a photo of this specimen</a></small> \n";
+
+    	print "<FORM name=parentform ACTION=\"/cgi/biocode_add_specimens\" METHOD=\"post\">";
+
+        print "<p>Add another specimen from collecting Event ID \#";
+    	print "<INPUT type=hidden name=mode value=newrecord>";
+        print "<INPUT type=hidden name=entry_by value=\"$input{entry_by}\">";
+        print "<INPUT size=6 name=Coll_EventID value=$input{Coll_EventID}>\n";
+    	print "<INPUT TYPE=\"submit\" VALUE=\"Go\">";
+        print "</form>";
+        &print_biocode_form_footer;
+
+
+
+    } else {
+        &load_record;
+        &send_email;
+        &print_biocode_form_header($heading, $form_bg_color);
+        print "<b>Collection ID \# $input{bnhm_id} was loaded successfully</b>\n";
+        print "<small><a target=new ";
+        print "href=/cgi/biocode_query?bnhm_id=$input{bnhm_id}&one=T>";
+        print "view this specimen record</a></small> &nbsp;&nbsp;\n";
+
+        print "<small><a target=new ";      # JG added for biocode
+        print "href=/cgi/biocode_add_tissue?bnhm_id=$input{bnhm_id}&table=biocode>";
+        print "add a tissue record for this specimen</a></small> &nbsp;&nbsp;\n";
+#        print "<small><a target=new ";      # JG added for biocode
+#        print "href=/cgi/biocode_add_photo?bnhm_id=$input{bnhm_id}&table=biocode>";
+#        print "add a photo of this specimen</a></small> \n";
+
+        &print_clear_form_button;
+
+        # print $loadfile_for_debug;
+
+        ## increment Catalog Number for the next record
+        $input{CatalogNumberNumeric}++;
+        local($exists) = &check_if_catalognumber_exists($input{ProjectCode},$input{CatalogNumberNumeric});
+        if ($exists) {
+            $input{CatalogNumberNumeric} = &get_max_catalognumber("biocode",$input{ProjectCode});
+            $cmts .= "<li>Sorry, the next cat. number already exists; using max cat. number\n";
+	    }
+        if ($cmts) {
+            print "<br><b>Processing notes</b><br>$cmts\n";
+        }
+        print "<hr>\n";
+        &print_form;
+        &print_biocode_form_footer;
+    }
+    exit;
+
+#####
+# step 1 print the form (if nec, first check password)
+#####
+} else {
+    $fresh_record = 1;  # for some initial values
+
+    if ($input{'special'} eq "firstscreen") {  ## check the password
+
+	if ($its_an_update) {
+	    $cat_id_OK = &check_incoming_cat_id($input{bnhm_id},"specimen");
+	}
+	my $passwd_OK = &check_biocode_name_and_password($input{entry_by},$input{password});
+
+        my $Coll_EventID_OK = 1;
+        if(!$its_an_update) {
+	    $Coll_EventID_OK = &check_incoming_coll_eventid($input{Coll_EventID});
+            if(!$Coll_EventID_OK) {
+                $bad_msg .= "<li>Collecting Event number required\n";
+            }
+        }
+	
+	if (!$passwd_OK || ($its_an_update && !$cat_id_OK) || !$Coll_EventID_OK) {
+	    &print_biocode_err_and_exit;
+	} else {
+	    &print_biocode_form_header($heading, $form_bg_color, $javascript_in_bodytag);
+	    &print_form;
+	    &print_biocode_form_footer;
+	    exit;
+	}
+
+    } elsif ($its_an_update) {  # "Update Another Record" - password already OK
+        if($input{Specimen_Num_Collector}) {
+	    $cat_id_OK = &check_incoming_Specimen_Num_Collector($input{Specimen_Num_Collector});
+	    
+        } else {
+	    $cat_id_OK = &check_incoming_cat_id($input{bnhm_id},"specimen");
+        }
+	&print_biocode_form_header($heading, $form_bg_color, $javascript_in_bodytag);
+        &print_form;
+        &print_biocode_form_footer;
+        exit;
+
+    } else {   # don't need a password
+        &print_biocode_form_header($heading, $form_bg_color, $javascript_in_bodytag);
+        &print_form;
+        &print_biocode_form_footer;
+        exit;
+    }
+}
+
+
+sub print_form {
+
+    if ($its_an_update) {
+	if ($bad_msg) {  ## need to re-set the values
+	    foreach $v (@biocode_schema) {
+		${$v} = $input{$v};
+	    }   
+#	    $US_State = $input{US_State};   # jg commented this out May 26 2009 ... don't need with new table structure
+#           $other_stateprovince = $input{other_stateprovince};
+        }
+        ## not bad_msg --  get temp values for this form ...
+#        ($US_State,$other_stateprovince) = &get_stateprovince($StateProvince,$Country);
+
+        ## turn collector names into last, first
+#        $last_first_coll1 = &make_lastnamefirst($Collector);
+#        $last_first_coll2 = &make_lastnamefirst($Collector2);
+#        $last_first_coll3 = &make_lastnamefirst($Collector3);
+#        $last_first_coll4 = &make_lastnamefirst($Collector4);
+#        $last_first_coll5 = &make_lastnamefirst($Collector5);
+#        $last_first_coll6 = &make_lastnamefirst($Collector6);
+#        $last_first_coll7 = &make_lastnamefirst($Collector7);
+#        $last_first_coll8 = &make_lastnamefirst($Collector8);
+
+    # cloned record:  fill the fields with the previous record
+    } elsif ($clone_record) {
+	@clone_row = split(/\|/,$input{row});
+	$rowcount = 0;
+	# $bad_msg .= "<li>row=|$input{row}|\n";
+	# $bad_msg .= "<li>@clone_row\n";
+	# foreach $v (@biocode_schema) {
+
+	foreach $v (@biocode_specimen_and_collevent_schema) {
+            $v =~ s/biocode\.//g;
+            $v =~ s/biocode_collecting_event\.//g;
+	    ${$v} = $clone_row[$rowcount];
+ 	    $rowcount++;
+        }
+        $parent_record = $bnhm_id;
+#        ($US_State,$other_stateprovince) = &get_stateprovince($StateProvince,$Country);
+
+        ## turn collector names into last, first
+#        $last_first_coll1 = &make_lastnamefirst($Collector);
+#        $last_first_coll2 = &make_lastnamefirst($Collector2);
+#        $last_first_coll3 = &make_lastnamefirst($Collector3);
+#        $last_first_coll4 = &make_lastnamefirst($Collector4);
+#        $last_first_coll5 = &make_lastnamefirst($Collector5);
+#        $last_first_coll6 = &make_lastnamefirst($Collector6);
+#        $last_first_coll7 = &make_lastnamefirst($Collector7);
+#        $last_first_coll8 = &make_lastnamefirst($Collector8);
+
+        $IndividualCount = "";
+
+    } else {
+	### Get values that were entered into form, to re-print them.
+	foreach $v (@biocode_schema) {
+	    ${$v} = $input{$v};
+	# DEBUG # print "$v: $input{$v} ...";
+        }
+
+        if ($Coll_EventID) {  # get values from collecting event table
+
+            &set_collect_event_initial_values($Coll_EventID,"EventID");   # mybiocode_utils.p
+            if ($coll_event_not_found) {  # gets set in above function
+		print "<p>$bad_msg<p>\n";
+		&print_biocode_footer;
+		exit;
+	    }
+
+	    ($US_State,$other_stateprovince) = &get_stateprovince($StateProvince,$Country);
+	    ## turn collector names into last, first
+	    $last_first_coll1 = &make_lastnamefirst($Collector);
+	    $last_first_coll2 = &make_lastnamefirst($Collector2);
+	    $last_first_coll3 = &make_lastnamefirst($Collector3);
+	    $last_first_coll4 = &make_lastnamefirst($Collector4);
+	    $last_first_coll5 = &make_lastnamefirst($Collector5);
+	    $last_first_coll6 = &make_lastnamefirst($Collector6);
+	    $last_first_coll7 = &make_lastnamefirst($Collector7);
+	    $last_first_coll8 = &make_lastnamefirst($Collector8);
+
+        } else { 
+	    $US_State = $input{US_State};
+            $other_stateprovince = $input{other_stateprovince};
+	    ## collectors, last name first (for menu)
+	    $last_first_coll1 = $input{last_first_coll1};
+	    $last_first_coll2 = $input{last_first_coll2};
+	    $last_first_coll3 = $input{last_first_coll3};
+	    $last_first_coll4 = $input{last_first_coll4};
+	    $last_first_coll5 = $input{last_first_coll5};
+	    $last_first_coll6 = $input{last_first_coll6};
+	    $last_first_coll7 = $input{last_first_coll7};
+	    $last_first_coll8 = $input{last_first_coll8};
+	}
+
+    }
+    if ($bad_msg) {
+	print "<font color=red><b>";
+	print "Errors found - please correct and submit again...</b></font>\n";
+        print "<small>Problems? email <a href=mailto:bscit\@berkeley.edu?subject=biocode_add_specimens>bscit\@berkeley.edu</a></small>";
+	&print_clear_form_button;
+	print "<small>$bad_msg</small>\n";
+	if ($cmts) {
+	    print "<br><small><font color=green>Comments</font><br>$cmts</small>\n";
+	}
+	print "<hr>\n";
+
+    } elsif ($input{carryforward}) {
+	$carryforward = $input{carryforward};
+
+	## delete fields we don't want in carryover
+	# $IndividualCount = "";
+
+    } elsif ($fresh_record) {
+	if ($its_an_update) {
+	    ## use stuff from the record
+	} else {
+	    ## get some initial values
+	    $ProjectCode = "MBIO";
+	    $CatalogNumberNumeric = &get_max_catalognumber("biocode","MBIO");
+	}
+    } else {	## just do the usual
+
+    }
+
+    print "<form name=parentform action=/cgi/biocode_add_specimens method=post>\n";
+    print "<table>\n";
+    print "<tr>\n";
+
+    &print_column_1; # codes_and_nums, collector_info
+    &print_column_2; # habitats, elev, depth
+    &print_column_3; # elevation, depth, latlong, etc.
+    &print_column_4; # taxonomy
+    &print_required_field;
+
+    print "</tr>\n";
+    print "</table>\n";
+    print "</form>\n";
+}
+
+sub print_column_1 {
+
+    print "<td align=left valign=top>\n";
+    &print_codes_and_nums;
+    print "</td>\n";
+}
+
+sub print_column_2 {
+
+    print "<td align=left valign=top>\n";
+
+    print "<table>\n";
+
+    print "<tr>\n";
+    print "<td><br></td>\n";
+    print "<td><br></td>\n";
+    print "</tr>\n";
+
+    ## Specimen Elevation
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Elevation')\">Specimen Elevation</a>:";
+    print "</td>\n";
+
+
+    print "<td colspan=2>";
+    print "<nobr>";
+    print "<input size=9 name=specimen_ElevationMeters value=\"$specimen_ElevationMeters\"";
+    if ($specimen_ElevationMeters) { print " class=yellbg"; }
+    print ">m &nbsp;&nbsp;(if different from Coll Event)</nobr>\n";
+    
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    ## Specimen Min Depth
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Depth')\">Specimen Minimum Depth</a>:";
+    print "</td>\n";
+
+
+    print "<td colspan=2>";
+    print "<nobr>";
+
+    print "<input size=9 name=specimen_MinDepthMeters value=\"$specimen_MinDepthMeters\"";
+    if ($specimen_MinDepthMeters) { print " class=yellbg"; }
+    print ">m &nbsp;&nbsp;(if different from Coll Event)</nobr>\n";
+
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    ## Specimen Max Depth
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Depth')\">Specimen Maximum Depth</a>:";
+    print "</td>\n";
+
+
+    print "<td colspan=2>";
+    print "<nobr>";
+
+    print "<input size=9 name=specimen_MaxDepthMeters value=\"$specimen_MaxDepthMeters\"";
+    if ($specimen_MaxDepthMeters) { print " class=yellbg"; }
+    print ">m &nbsp;&nbsp;(if different from Coll Event)</nobr>\n";
+
+    print "</td>\n";
+
+
+
+    &print_specimen_habitat;
+    &print_microhabitat;  
+    &print_associated_taxon;  
+    &print_association_type;
+    &print_color;
+    &print_coll_notes;
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Notes')\">Notes</a></td>\n";
+    print "<td align=left><br>";
+    print "<textarea wrap=hard name=Notes cols=30 rows=2";
+    if ($Notes)  { print " class=yellbg"; }
+    print ">$Notes</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+    print "</table>\n";
+
+    
+    print "</td>\n";
+}
+
+sub print_column_3 {
+
+    ### Column Three ###
+    print "<td align=left valign=top>\n";
+
+
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td><br></td>\n";
+    print "<td><br></td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=IndividualCount')\">Individual Count";
+    print "</a></td>\n";
+    print "<td><input ";
+    if ($IndividualCount) {  print "class=yellbg "; }
+    print "size=15 name=IndividualCount value=\"$IndividualCount\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=PreparationType')\">Prep Type</a>\n";
+    print "</td>\n";
+    print "<td>";
+    print "<select size=1 name=PreparationType";
+    if ($PreparationType) { print " class=yellbg"; }
+    print ">\n";
+    &print_prep_types_options($PreparationType);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=relaxant')\">Relaxant</a>\n";
+    print "</td>\n";
+    print "<td nowrap>";
+    print "<select size=1 name=relaxant";
+    if ($relaxant) { print " class=yellbg"; }
+    print ">\n";
+    &print_relaxant_options($relaxant);
+    print "</select>\n";
+    &print_add_a_new_relaxant_button($input{entry_by},1); # mybiocode_utils.p
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=preservative')\">Fixative</a>\n";
+    print "</td>\n";
+    print "<td>";
+    print "<select size=1 name=fixative";
+    if ($fixative) { print " class=yellbg"; }
+    print ">\n";
+    &print_preservative_options($fixative);
+    print "</select>\n";
+    &print_add_a_new_fixative_button($input{entry_by},1); # mybiocode_utils.p
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=preservative')\">Preservative</a>\n";
+    print "</td>\n";
+    print "<td>";
+    print "<select size=1 name=preservative";
+    if ($preservative) { print " class=yellbg"; }
+    print ">\n";
+    &print_preservative_options($preservative);
+    print "</select>\n";
+    &print_add_a_new_preservative_button($input{entry_by},1); # mybiocode_utils.p
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=TypeStatus')\">Type Status</a>\n";
+    print "</td>\n";
+    print "<td>\n";
+    print "<select size=1 name=TypeStatus";
+    if ($TypeStatus) { print " class=yellbg"; }
+    print ">\n";
+    &print_type_status_options($TypeStatus);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+    
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=SexCaste')\">Sex/Caste</a>\n";
+    print "</td>\n";
+    print "<td>\n";
+    print "<select size=1 name=SexCaste";
+    if ($SexCaste) { print " class=yellbg"; }
+    print ">\n";
+    &print_sex_options($SexCaste);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=LifeStage')\">Life Stage</a>\n";
+    print "</td>\n";
+    print "<td>\n";
+    print "<select size=1 name=LifeStage";
+    if ($LifeStage) { print " class=yellbg"; }
+    print ">\n";
+    &print_stage_options($LifeStage);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Parts')\">Parts</a>\n";
+    print "</td>\n";
+    print "<td><input size=20 name=Parts value=\"$Parts\"";
+    if ($Parts) { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Length')\">Length</a>\n";
+    print "</td>\n";
+    print "<td nowrap><input size=20 name=Length value=\"$Length\"";
+    if ($Length) { print " class=yellbg"; }
+    print ">";
+    print "<select size=1 name=LengthUnits";
+    if ($LengthUnits) { print " class=yellbg"; }
+    print ">\n";
+    &print_length_unit_options($LengthUnits);
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Weight')\">Weight</a>\n";
+    print "</td>\n";
+    print "<td nowrap><input size=20 name=Weight value=\"$Weight\"";
+    if ($Weight) { print " class=yellbg"; }
+    print ">";
+    print "<select size=1 name=WeightUnits";
+    if ($WeightUnits) { print " class=yellbg"; }
+    print ">\n";
+    &print_weight_unit_options($WeightUnits);
+    print "</td>\n";
+    print "</tr>\n";
+
+
+
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=DNASequenceNo')\">DNA Seq\#</a>\n";
+    print "</td>\n";
+    print "<td><input size=20 name=DNASequenceNo value=\"$DNASequenceNo\"";
+    if ($DNASequenceNo) { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td>&nbsp;<p>&nbsp;<p></td>\n";
+    print "<td>&nbsp;<p>&nbsp;<p></td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=MorphoSpecies_Match')\">Morpho Species Match</a></td>\n";
+    print "<td><input size=20 name=MorphoSpecies_Match value=\"$MorphoSpecies_Match\"";
+    if ($MorphoSpecies_Match)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=MorphoSpecies_Description')\">Morpho Species Description</a></td>\n";
+    print "<td><input size=20 name=MorphoSpecies_Description value=\"$MorphoSpecies_Description\"";
+    if ($MorphoSpecies_Description)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=IdentifiedBy')\">IdentifiedBy</a></td>\n";
+    print "<td><input size=20 name=IdentifiedBy value=\"$IdentifiedBy\"";
+    if ($IdentifiedBy)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=BasisOfID')\">Basis of ID</a></td>\n";
+    print "<td><input size=20 name=BasisOfID value=\"$BasisOfID\"";
+    if ($BasisOfID)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=DateIdentified')\">Date Ident</a></td>\n";
+    print "<td><nobr>\n";
+    print "<input size=4 maxlength=4 name=YearIdentified value=$YearIdentified";
+    if ($YearIdentified)  { print " class=yellbg"; }
+    print ">yyyy\n";
+    print "<input size=2 maxlength=2 name=MonthIdentified value=$MonthIdentified";
+    if ($MonthIdentified)  { print " class=yellbg"; }
+    print ">mm\n";
+    print "<input size=2 maxlength=2 name=DayIdentified value=$DayIdentified";
+    if ($DayIdentified)  { print " class=yellbg"; }
+    print ">dd\n";
+    print "</nobr></td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=PreviousID')\">Previous ID</a></td>\n";
+    print "<td>\n";
+    print "<input size=20 name=PreviousID value=\"$PreviousID\"";
+    if ($PreviousID)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=LowestTaxon')\">Lowest Taxon</a></td>\n";
+    print "<td>\n";
+    print "<input size=20 name=LowestTaxon value=\"$LowestTaxon\"";
+    if ($LowestTaxon)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=LowestTaxonLevel')\">Lowest Taxon Level</a></td>\n";
+    print "<td>\n";
+    print "<input size=20 name=LowestTaxonLevel value=\"$LowestTaxonLevel\"";
+    if ($LowestTaxonLevel)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+
+
+#    print "<input type=hidden name=LowestTaxon value=\"$LowestTaxon\">\n";
+#    print "<input type=hidden name=LowestTaxonLevel value=\"$LowestTaxonLevel\">\n";
+
+    print "<tr>\n";
+    print "<td>&nbsp;<p>&nbsp;<p></td>\n";
+    print "<td>&nbsp;<p>&nbsp;<p></td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td></td>";
+    print "<td align=left>$help_win_link=PublicAccess')\">No Public Access</a>";
+    print "&nbsp;&nbsp;<input type=checkbox name=PublicAccess ";
+    if ($PublicAccess)  {
+        print " class=yellbg";
+        print " checked";
+    }
+    print ">\n";
+    print "</td>\n";
+
+    print "</tr>\n";
+
+
+    print "</tr>\n";
+    print "</table>\n";
+
+    ### End of Column Three ###
+    print "</td>\n";
+
+}
+
+sub print_column_4 {
+    ### Column Four ###
+    print "<td align=left valign=top>\n";
+    print "<table>\n";
+
+
+    print "<tr><td colspan=2>\n";
+    if ($taxon_alert) {  # taxonomoy on a collecting event
+	print "$taxon_alert<br>";
+    }
+    print "<i>Higher taxonomy will be automatically added</i>";
+    print "</td>\n";
+    print "</tr>\n";
+    
+    print "<input type=hidden name=ScientificName value=\"$ScientificName\">\n";
+    print "<input type=hidden name=namesoup value=\"$namesoup\">\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=ColloquialName')\">ColloquialName</a></td>\n";
+    print "<td><input size=20 name=ColloquialName value=\"$ColloquialName\"";
+    if ($ColloquialName) { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    #print "<tr>\n";
+    #print "<td align=right>$help_win_link=Kingdom')\">Kingdom</a></td>\n";
+    #print "<td><input type=hidden name=Kingdom value=Metazoa>Metazoa\n";
+    #print "</td>\n";
+    #print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Kingdom')\">Kingdom</a></td>\n";
+    print "<td>";
+    print "<select size=1 name=Kingdom";
+    if ($Kingdom)  { print " class=yellbg"; }
+    print ">\n";
+    &print_biocode_kingdom_options($Kingdom);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Phylum')\">Phylum</a></td>\n";
+    print "<td>";
+    print "<select size=1 name=Phylum";
+    if ($Phylum)  { print " class=yellbg"; }
+    print ">\n";
+    &print_phylum_options($Phylum);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Subphylum')\">Subphylum</a></td>\n";
+    print "<td><input size=20 name=Subphylum value=\"$Subphylum\"";
+    if ($Subphylum)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Superclass')\">Superclass</a></td>\n";
+    print "<td><input size=20 name=Superclass value=\"$Superclass\"";
+    if ($Superclass)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Class')\">Class</a></td>\n";
+    print "<td><input size=20 name=Class value=\"$Class\"";
+    if ($Class)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Subclass')\">Subclass</a></td>\n";
+    print "<td><input size=20 name=Subclass value=\"$Subclass\"";
+    if ($Subclass)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Infraclass')\">Infraclass</a></td>\n";
+    print "<td><input size=20 name=Infraclass value=\"$Infraclass\"";
+    if ($Infraclass)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Superorder')\">Superorder</a></td>\n";
+    print "<td><input size=20 name=Superorder value=\"$Superorder\"";
+    if ($Superorder)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Ordr')\">Order</a></td>\n";
+    print "<td><input size=20 name=Ordr value=\"$Ordr\"";
+    if ($Ordr)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Suborder')\">Suborder</a></td>\n";
+    print "<td><input size=20 name=Suborder value=\"$Suborder\"";
+    if ($Suborder)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Infraorder')\">Infraorder</a></td>\n";
+    print "<td><input size=20 name=Infraorder value=\"$Infraorder\"";
+    if ($Infraorder)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Superfamily')\">Superfamily</a></td>\n";
+    print "<td><input size=20 name=Superfamily value=\"$Superfamily\"";
+    if ($Superfamily)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Family')\">Family</a></td>\n";
+    print "<td><input size=20 name=Family value=\"$Family\"";
+    if ($Family)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Subfamily')\">Subfamily</a></td>\n";
+    print "<td><input size=20 name=Subfamily value=\"$Subfamily\"";
+    if ($Subfamily)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Tribe')\">Tribe</a></td>\n";
+    print "<td><input size=20 name=Tribe value=\"$Tribe\"";
+    if ($Tribe)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Subtribe')\">Subtribe</a></td>\n";
+    print "<td><input size=20 name=Subtribe value=\"$Subtribe\"";
+    if ($Subtribe)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Genus')\">Genus</a></td>\n";
+    print "<td><input size=20 name=Genus value=\"$Genus\"";
+    if ($Genus)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Subgenus')\">Subgenus</a></td>\n";
+    print "<td><input size=20 name=Subgenus value=\"$Subgenus\"";
+    if ($Subgenus)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=SpecificEpithet')\">Species</a></td>\n";
+    print "<td><input size=20 name=SpecificEpithet value=\"$SpecificEpithet\"";
+    if ($SpecificEpithet)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Taxon_Certainty')\">Certainty</a></td>\n";
+    print "<td>";
+    print "<select size=1 name=Taxon_Certainty";
+    if ($Taxon_Certainty)  { print " class=yellbg"; }
+    print ">\n";
+    &print_taxon_certainty_options($Taxon_Certainty);
+    print "</select>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=SubspecificEpithet')\">Subspecies</a></td>\n";
+    print "<td><input size=20 name=SubspecificEpithet value=\"$SubspecificEpithet\"";
+    if ($SubspecificEpithet)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=ScientificNameAuthor')\">Author & Date</a></td>\n";
+    print "<td><input size=20 name=ScientificNameAuthor value=\"$ScientificNameAuthor\"";
+    if ($ScientificNameAuthor)  { print " class=yellbg"; }
+    print ">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td colspan=2>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    ### End of Column Four ###
+
+    # print "<br>\n";
+
+    print "<tr><td>";
+    print "</td><td>";
+    print "<input type=hidden name=special value=load>\n";
+    print "<input type=hidden name=batch_id value=\"$batch_id\">\n";
+    if ($GetNextCollEventID) {
+	print "<input type=hidden name=GetNextCollEventID value=1>\n";
+#	print "<input type=hidden name=carryforward value=1>\n";
+    } else {
+	print "<input type=hidden name=carryforward value=1>\n";
+    }
+    print "<input type=hidden name=entry_by value = \"$input{entry_by}\" >\n";
+    if ($its_an_update) {
+	print "<input type=hidden name=mode value=update>\n";
+	print "<input type=submit value=\"Update Record\">\n";
+    } else {
+	print "<input type=hidden name=mode value=newrecord>\n";
+	print "<input type=submit value=\"Submit Record\">\n";
+    }
+    print "</td></tr>";
+    print "</table>\n";
+
+    print "</td>\n";
+}
+
+sub print_codes_and_nums {
+    print "<table>\n";
+
+    print "<tr>\n";
+    print "<td align=left>";
+    print "<nobr>";
+    print "$help_win_link=CatID')\">Catalog ID Num";
+    print "</a><font color=red> * </font>\n";
+
+    if (!$ProjectCode) {
+	$ProjectCode = "MBIO";
+    }
+    if ($its_an_update) {
+	print "<input type=hidden name=ProjectCode value=\"$ProjectCode\">";
+	print "$ProjectCode ";
+    } else {
+	print "<select size=1 name=ProjectCode>";
+	&print_institution_options($ProjectCode);
+	print "</select>";
+    }
+
+    #print "<tr>\n";
+    #print "<td align=right>$help_win_link=CatalogNumberNumeric')\">Catalog Number";
+    #print "</a><font color=red> * </font></td>\n";
+    #print "<td align=left>";
+
+    if ($its_an_update) {
+        print "<input type=hidden name=CatalogNumberNumeric value=\"$CatalogNumberNumeric\">";
+	print "$CatalogNumberNumeric";
+    } else {
+	print "<input ";
+	print "size=10 name=CatalogNumberNumeric  value=\"$CatalogNumberNumeric\">";
+    }
+    print "<input type=hidden name=Tissue value=\"$Tissue\">";
+    print "</nobr>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td align=left>$help_win_link=Specimen_Num_Collector')\">Collector's Specimen No.";
+    print "</a>&nbsp;&nbsp;<input ";
+    if ($Specimen_Num_Collector) {  print "class=yellbg "; }
+    print "size=15 name=Specimen_Num_Collector value=\"$Specimen_Num_Collector\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr>\n";
+    print "<td align=left colspan=2>$help_win_link=HoldingInstitution')\">Institution";
+    print "</a><font color=red> * </font>\n";
+
+    print "<select size=1 name=HoldingInstitution ";
+    if($HoldingInstitution) { print "class=yellbg "; }
+    print ">";
+    &print_holding_institution_options($HoldingInstitution);
+    print "</select>";
+
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<table>\n";
+
+
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=VoucherCatalogNumber')\">Voucher Catalog Number";
+    print "</a></td>\n";
+    print "<td align=left>";
+    print "<input ";
+    if ($VoucherCatalogNumber) {  print "class=yellbg "; }
+    print "size=15 name=VoucherCatalogNumber maxsize=128 value=\"$VoucherCatalogNumber\"></td>\n";
+    print "</tr>\n";
+
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=RelatedCatalogItem')\">Related Catalog Item";
+    print "</a></td>\n";
+    print "<td align=left>";
+    print "<input ";
+    if ($RelatedCatalogItem) {  print "class=yellbg "; }
+    print "size=15 name=RelatedCatalogItem maxsize=128 value=\"$RelatedCatalogItem\"></td>\n";
+    print "</tr>\n";
+
+
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Parent_Record')\">Parent Record";
+    print "</a></td>\n";
+    print "<td align=left>";
+    print "<input ";
+    if ($parent_record) {  print "class=yellbg "; }
+    print "size=15 name=parent_record value=\"$parent_record\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+    
+    
+    if ($child_exists) {
+	print "<tr>\n";
+	print "<td align=right>$help_win_link=Parent_Record')\">Child Record";
+	print "</a></td>\n";
+	print "<td align=left><input type=hidden name=child_exists value=$child_exists> yes";
+	print "</td>\n";
+	print "</tr>\n";
+    }
+
+    if ($PRINT_ACCESSIONNUMBER) {
+	print "<tr>\n";
+	print "<td align=right>Accession Number</td>\n";
+	print "<td align=left>";
+	print "<input size=10 name=AccessionNumber maxsize=128 value=\"$AccessionNumber\"></td>\n";
+	print "</tr>\n";
+    }
+
+    ## Biocode collecting event
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=Coll_EventID')\">Biocode Collecting Event ID";
+    print "</a> <font color=red> * </font>\n";
+    print "</td>\n";
+
+    print "<td align=left>";
+    print "<input onchange='runIt();' ";
+    if ($Coll_EventID) {  print "class=yellbg "; }
+    #print "size=15 name=Coll_EventID value=\"$Coll_EventID\">\n";
+    print "size=15 name=Coll_EventID value=\"$Coll_EventID\">\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "<tr><td align=right>\n";
+    print "<div></div></td><td><div id='information'></div><noscript>hey, turn on your javascript</noscript>";
+    print "</td></tr>";
+
+
+    print "<script src='/js/ajax.js'></script>";
+
+    print "<script>\n";
+    print "function runIt() {\n";
+    print "        var strVal_EventID=document.parentform.Coll_EventID.value;\n";
+
+    print "        var strVal=\"xmlhttpString('/cgi/biocode_getcollevent?EventID=\" + document.parentform.Coll_EventID.value + \"','GET');\";";
+    print "        \n";
+    print "        strVal = eval(strVal);";
+
+    print "        document.getElementById('information').innerHTML=strVal;\n";
+
+    print "}\n";
+    print "</script>\n";
+
+
+    print "</table\n";
+
+    print "<br>\n";
+    
+    print "<table>\n";
+
+    if ($its_an_update) {
+
+	## don't print these out, but carry them forward
+	print "<input type=hidden name=DateFirstEntered value=$DateFirstEntered>\n";
+	print "<input type=hidden name=EnteredBy value=\"$EnteredBy\">\n";
+
+	print "<tr>\n";
+	print "<td align=right>$help_win_link=DateLastModified')\">Modification Date\n";
+	print "</a></td>\n";
+	#print "<td align=left><input size=12 name=DateLastModified value=$TODAY>\n";
+	print "<td align=left><input type=hidden name=DateLastModified value=$TODAY>\n";
+	print "$TODAY\n";
+
+	#print "&nbsp;&nbsp;<nobr>recheck<input type=checkbox name=RecheckFlag";
+        #if ($RecheckFlag eq "on") {
+        #    print " checked";
+        #}
+        #print ">\n";
+        #print "</nobr>";
+	print "</td>\n";
+	print "</tr>\n";
+
+	print "<tr>\n";
+	print "<td align=right>Modified By\n";
+	print "</td>\n";
+	#print "<td align=left><input size=20 name=ModifiedBy value=\"$input{entry_by}\"\n"; 
+	print "<td align=left><input type=hidden name=ModifiedBy value=\"$input{entry_by}\">\n";
+	print "$input{entry_by}\n";
+	print "</td>\n";
+	print "</tr>\n";
+	print "<tr>\n";
+        print "<td align=right>Modify Reason\n";
+        print "</td>\n";
+        print "<td align=left><input size=20 name=ModifyReason ";
+	if ($bad_msg) {
+	    print "value=\"$ModifyReason\">\n";
+	}
+        print "</tr>\n";
+
+    } else {  ## new record
+
+	print "<tr>\n";
+	print "<td align=right>$help_win_link=DateFirstEntered')\">Date First Entered\n";
+	print "</a></td>\n";
+	#print "<td align=left><input size=12 name=DateFirstEntered value=$TODAY>\n";
+	print "<td align=left><input type=hidden name=DateFirstEntered value=$TODAY>\n";
+	print "$TODAY\n";
+	# print "&nbsp;&nbsp;<nobr>$help_win_link=RecheckFlag')\">recheck</a>";
+	# if ($RecheckFlag eq "on") {
+	#    print "<input checked class=yellbg type=checkbox name=RecheckFlag>";
+	#} else {
+	#    print "<input type=checkbox name=RecheckFlag>";
+	#}
+	print "</nobr>";
+	print "</td>\n";
+	print "</tr>\n";
+
+	print "<tr>\n";
+	print "<td align=right>$help_win_link=EnteredBy')\">Entered By\n";
+	print "</a></td>\n";
+	#print "<td align=left><input size=20 name=EnteredBy value=\"$input{entry_by}\"\n"; 
+	print "<td align=left><input type=hidden name=EnteredBy value=\"$input{entry_by}\">\n";
+	print "$input{'entry_by'}\n";
+	print "</td>\n";
+	print "</tr>\n";
+    }
+
+    print "</table>\n";
+}
+
+
+
+sub print_collector_info {
+
+    print "</table>\n";
+    print "<table>\n";
+
+    if ($Coll_EventID) {
+	# &print_eight_collector_options_no_edit;  # mybiocode_utils.p
+	&print_eight_collector_options;  # mybiocode_utils.p   # 9/19/2006 -- Chris wants these editable on specimen form
+    } else {
+	&print_eight_collector_options;  # mybiocode_utils.p
+    }
+
+    print "<tr><td><br></td></tr>\n";
+
+    print "</table>\n";
+}
+
+sub print_collector_dates {
+
+     print "<table>\n";
+
+     if ($Coll_EventID) {
+	 # &print_collection_date_options_no_edit;  # mybiocode_utils.p
+	 &print_collection_date_options;  # mybiocode_utils.p  # changed 9/19/2006 at Chris's request (make fields editable)
+     } else {
+	 &print_collection_date_options;  # mybiocode_utils.p
+     }
+    
+    print "</table>\n";
+}
+
+sub print_coll_notes {
+
+    print "<tr><td><br></td></tr>\n";
+
+    print "<tr>\n";
+    print "<td align=right>$help_win_link=CollectingLabelNotes')\">Collecting Label Notes";
+    print "</a></td>\n";
+    print "<td><textarea wrap=hard name=CollectingLabelNotes";
+    print " cols=30 rows=2";
+    if ($CollectingLabelNotes) { print " class=yellbg"; }
+    print ">$CollectingLabelNotes</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+
+}
+
+sub print_required_field {
+
+    print "<table>\n";
+    print "<tr>\n";
+    print "<td colspan=2><p><br>";
+    print "<font color=red> * Required field</font>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+    print "</table>\n";
+}
+
+sub check_input {
+
+    ## change 'unselected' to ''
+    foreach $s (@biocode_schema) {
+        if ($input{$s} eq "unselected") {
+            $input{$s} = "";
+        }
+    }
+    ## these check incoming stuff, and also add more info
+    &check_numbers;
+    &check_ymd_dates;        # mybiocode_utils.p
+    &check_locality_fields;  # mybiocode_utils.p 
+    &check_lat_long_dep_elev;# mybiocode_utils.p
+    # &check_taxon_fields;    # commented this out June 2010
+    &check_five_collectors;  # mybiocode_utils.p
+    &check_misc_stuff;
+    $input{Specimen_Num_Collector} = &check_collectors_specimen_no($input{Specimen_Num_Collector},$input{bnhm_id});
+}
+
+
+sub check_numbers {
+
+
+    #$input{seq_num} = 0;
+    #($input{seq_num}) = &process_query("select uuid()", "biocode");
+
+    if (!$input{Coll_EventID}) {
+        $bad_msg .= "<dd><li><b>Biocode Collecting Event ID</a> is required\n";
+    }
+
+    if (!$input{ProjectCode}) {
+	$bad_msg .= "<dd><li><b>Institution Code</a> is required\n";
+    }
+
+    if (!$input{HoldingInstitution}) {
+        $bad_msg .= "<dd><li><b>Institution</a> is required\n";
+    }
+
+    if (!$input{CatalogNumberNumeric}) {
+	$bad_msg .= "<dd><li><b>Catalog Number</b> is required";
+
+    } elsif ($its_an_update) {
+	# just create bnhm_id
+	$input{bnhm_id} = $input{ProjectCode} . $input{CatalogNumberNumeric};
+
+    } else {
+	$OK = &is_an_integer($input{CatalogNumberNumeric});
+	if (!$OK) {
+	    $bad_msg .= "<dd><li><b>Catalog Number</b> ";
+	    $bad_msg .= "\"$input{CatalogNumberNumeric}\" is not an integer";
+	} else {
+	    $input{bnhm_id} = $input{ProjectCode} . $input{CatalogNumberNumeric};
+            ($CatNumExists) = &get_one_record("select count(*) from biocode where bnhm_id='$input{bnhm_id}'","biocode");
+	    if ($CatNumExists) {
+		$bad_msg .= "<dd><li><b>Collection ID</b> $input{bnhm_id} already exists &nbsp; ";
+		$bad_msg .= "<a target=new ";
+		$bad_msg .= "href=/cgi/biocode_query?where-bnhm_id=$input{bnhm_id}>";
+		$bad_msg .= "click here to see it</a>";
+	    }
+	}
+    }
+
+
+}
+
+sub check_taxon_fields {
+
+    # Least to Most Specific
+    # ---------------------------------------
+    # table biocode             table biocode_species
+    # ---------------------------------------
+    # SubspecificEpithet    subspecies
+    # SpecificEpithet       species
+    # Subgenus              subgenus
+    # Genus                 genus
+    # Subtribe              subtribe
+    # Tribe                 tribe
+    # Subfamily             subfamily
+    # Family                family
+    # Superfamily           superfamily
+    # Infraorder            infraorder     # new 6/25/2007
+    # Suborder              suborder
+    # Ordr                  ordr  $sp_Order
+    # Superorder            superorder     # new 6/25/2007
+    # Subclass              subclass
+    # Class                 class
+    # Superclass            superclass     # new 6/25/2007
+    # Subphylum             subphylum      # new 6/25/2007
+    # Phylum                phylum
+    # Kingdom               kingdom
+
+    # Testing 
+    # Euphydryas editha subsp. augusta (new species)
+    # Enochrus aridus (has suborder,superfamily,tribe,subtribe=Acidocerina)
+    # Ommata atrata (has a subgenus=Chrysaethe)
+
+    ## Caseize everything
+    $input{SubspecificEpithet} = &strip(lc($input{SubspecificEpithet}));
+    $input{SpecificEpithet} = &strip(lc($input{SpecificEpithet}));
+    $input{Subgenus} = &caseize_higher_taxonomy($input{Subgenus});
+    $input{Genus} = &caseize_higher_taxonomy($input{Genus});
+    $input{Subtribe} = &caseize_higher_taxonomy($input{Subtribe});
+    $input{Tribe} = &caseize_higher_taxonomy($input{Tribe});
+    $input{Subfamily} = &caseize_higher_taxonomy($input{Subfamily});
+    $input{Family} = &caseize_higher_taxonomy($input{Family});
+    $input{Superfamily} = &caseize_higher_taxonomy($input{Superfamily});
+    $input{Infraorder} = &caseize_higher_taxonomy($input{Infraorder});
+    $input{Suborder} = &caseize_higher_taxonomy($input{Suborder});
+    $input{Ordr} = &caseize_higher_taxonomy($input{Ordr});
+    $input{Superorder} = &caseize_higher_taxonomy($input{Superorder});
+    $input{Subclass} = &caseize_higher_taxonomy($input{Subclass});
+    $input{Class} = &caseize_higher_taxonomy($input{Class});
+    $input{Superclass} = &caseize_higher_taxonomy($input{Superclass});
+    $input{Subphylum} = &caseize_higher_taxonomy($input{Subphylum});
+    $input{Phylum} = &caseize_higher_taxonomy($input{Phylum});
+    $input{Kingdom} = &caseize_higher_taxonomy($input{Kingdom});
+
+    ## Create namesoup field
+    $input{namesoup} = &strip("$input{Class} $input{Subclass} $input{Ordr} $input{Suborder} $input{Superfamily} $input{Family} $input{Subfamily} $input{Tribe} $input{Subtribe} $input{Genus} $input{Subgenus} $input{SpecificEpithet} $input{SubspecificEpithet} $input{MorphoSpecies_Match} $input{Subtribe} $input{Superfamily}");
+
+
+    ## -----------------------------------------------
+    ## Figure out the most specific term that was input
+    ## Then get all the higher taxonomy from biocode_species
+    ## ------------------------------------------------
+
+    #if ($input{Genus}) {
+    if ($input{Genus} && $input{Genus} !~ /^undetermined/i) {  # modified 10/29/2007
+# HERE
+	    ## check for subspecies without a species
+        if ($input{SubspecificEpithet} && !$input{SpecificEpithet}) {
+            $bad_msg .= "<dd><li>Subspecies input without a species";
+#        } elsif (!$input{SpecificEpithet} || $input{SpecificEpithet} eq "sp.") {
+#            &Genus_is_lowest_input_No_add_to_species_db_if_there;
+        } else {
+            &Genus_is_lowest_input_No_add_to_species_db_if_there;
+	}
+    # } elsif ($input{SpecificEpithet}) {
+    } elsif ($input{SpecificEpithet} && $input{SpecificEpithet} ne "sp." && $input{SpecificEpithet} ne "sp") {  # modified 10/29/2007
+	$bad_msg .= "<dd><li>Species input without a genus";
+	
+    } elsif ($input{SubspecificEpithet}) {
+	$bad_msg .= "<dd><li>Subspecies input without a genus";
+	
+    } elsif ($input{Subgenus}) {
+	&Subgenus_is_lowest_input;
+
+    } elsif ($input{Subtribe}) {
+	&Subtribe_is_lowest_input;
+
+    } elsif ($input{Tribe}) {
+	&Tribe_is_lowest_input;
+
+    } elsif ($input{Subfamily}) {
+	&Subfamily_is_lowest_input;
+
+    } elsif ($input{Family}) {
+        &Family_is_lowest_input;
+
+    } elsif ($input{Superfamily}) {
+        &Superfamily_is_lowest_input;
+
+    } elsif ($input{Suborder}) {
+        &Suborder_is_lowest_input;
+
+    } elsif ($input{Ordr}) {
+        &Ordr_is_lowest_input;
+
+    } elsif ($input{Subclass}) {
+        &Subclass_is_lowest_input;
+
+    } elsif ($input{Class}) {
+        &Class_is_lowest_input;
+
+    }
+
+    ## 4/20/07: do not carryover Scientific Name from a prev. record
+    if (!$input{Genus}) {
+        $input{ScientificName} = "";
+    } 
+    
+    ## check for Author without scientific name
+
+    #if ($input{ScientificNameAuthor}) {
+    #    if (!$input{SpecificEpithet} || $input{SpecificEpithet} eq "sp.") {
+    #        $bad_msg .= "<dd><li>\"Author & Date\" was input but there is no species name\n";
+    #        $OK_2_INCLUDE_AUTHOR = 0;
+    #    } else {
+    #        $OK_2_INCLUDE_AUTHOR = 1;
+    #    }
+    #}
+     
+    $OK_2_INCLUDE_AUTHOR = 1;
+}
+
+sub check_misc_stuff {
+
+    # recheck flag
+    if ($input{RecheckFlag} eq "on") {
+	$input{RecheckFlag} = 1;
+    } else {
+	$input{RecheckFlag} = "";
+    }
+
+    # public access
+    if ($input{PublicAccess} eq "on") {
+        $input{PublicAccess} = "no";
+    } else {
+	$input{PublicAccess} = "";
+    }
+
+
+}
+
+sub load_record {
+
+    $loadfile = "";
+    $loadfile_for_debug = "";
+
+    ($input{seq_num}) = &get_one_record("select uuid()","biocode");
+
+    if(!$input{Weight}) { 
+       $input{WeightUnits} = ""; # default 3/13/06 is g
+    }
+    if(!$input{Length}) { 
+       $input{LengthUnits} = ""; # default 3/13/06 is mm
+    }
+
+#    ### see if there's a photo for this specimen -- temporary until we put stuff in CalPhotos
+#    @glob =  glob("/data3/biocode/photos/enlargements/$input{bnhm_id}"."_*.jpg");
+#    foreach $g (@glob) {
+#        $input{pic} = "1";
+#    }
+#    if(!$input{pic}) {
+#        $input{pic} = "0";
+#    }
+
+    my $cp_query = "select count(*) from img where specimen_no = '$input{bnhm_id}'";
+    my($cp_count) = &get_one_record($cp_query,"image");
+    if($cp_count) {
+        $input{pic} = "1";
+    } else {
+        $input{pic} = "0";
+    }
+
+
+    $input{ScientificName} = "$input{Genus} $input{SpecificEpithet} $input{$SubspecificEpithet}";
+    $input{ScientificName} = &strip($input{ScientificName});
+
+
+    ## make load file
+    foreach $attr (@biocode_schema) {
+	$val = &strip($input{$attr});
+	if (!$val || $val eq "unselected" || $val eq "none" ) {
+	    # if ($attr eq "seq_num" || $attr eq "pic" || $attr eq "Tissue") {
+	    # if ($attr eq "pic" || $attr eq "Tissue") {
+	    if ($attr eq "Tissue") {
+		$val = 0;
+	    } else {
+		$val = "\\N";
+	    }
+        }
+	$loadfile .= "$val|";
+
+	# print field names in orange for debugging
+	$loadfile_for_debug .= "<font color=orange>$attr=</font>|$val| ";
+    }
+# ABC
+#print "Content-type: text/html\n\n";
+#print "loadfile_for_debug: $loadfile_for_debug<p>";
+#exit;
+
+    &load_biocode_record($loadfile,"biocode");  # mybiocode_utils.p
+
+    if ($input{parent_record}) {
+        $update_parent = "update biocode set child_exists=1 where bnhm_id='$input{parent_record}'";
+        &process_query($update_parent, "biocode");
+    }
+
+}
+
+sub update_record {
+
+    # delete old record, insert new record
+
+    #$debugging = 1;
+
+    ## first, save old record
+    $save_statement = "insert into biocode_deleted select * from biocode where bnhm_id=\"$input{bnhm_id}\"";
+    &process_query($save_statement, "biocode");
+
+    $del_statement = "delete from biocode where bnhm_id=\"$input{bnhm_id}\"";
+    if ($debugging) {
+        # print "$del_statement<p>";
+    } else {
+        &process_query($del_statement, "biocode");
+	&load_record;
+    }
+
+    if ($parent_record) {
+        $update_parent = "update biocode set child_exists=1 where bnhm_id='$input{parent_record}'";
+        &process_query($update_parent, "biocode");
+    }
+
+    # print "Content-type: text/html\n\n";
+    # print "HELLO";
+
+}
+
+sub print_feedback {
+    # print nice message to Web page after record is loaded
+
+    &print_biocode_header;
+    print "<h4>The new record has been added! &nbsp;&nbsp;Coll. ID #&nbsp;  ";
+    print "<font color=red>$input{bnhm_id}</font></h4>";
+
+    ## DEBUG
+    ## print "$loadfile_for_debug<p>";
+
+    ## print hidden fields for carry forward
+    
+    print "\n<form name=parentform action=/cgi/biocode_add_specimens method=post>\n";
+    print "<input type=hidden name=special value=carryforward>\n";
+    print "<input type=hidden name=US_State value=\"$input{US_State}\">\n";
+    print "<input type=hidden name=other_stateprovince value=\"$input{other_stateprovince}\">\n";
+    print "<input type=hidden name=last_first_coll1  value=\"$input{last_first_coll1}\">\n";
+    print "<input type=hidden name=last_first_coll2  value=\"$input{last_first_coll2}\">\n";
+    print "<input type=hidden name=last_first_coll3  value=\"$input{last_first_coll3}\">\n";
+    print "<input type=hidden name=last_first_coll4  value=\"$input{last_first_coll4}\">\n";
+    print "<input type=hidden name=last_first_coll5  value=\"$input{last_first_coll5}\">\n";
+    print "<input type=hidden name=last_first_coll6  value=\"$input{last_first_coll6}\">\n";
+    print "<input type=hidden name=last_first_coll7  value=\"$input{last_first_coll7}\">\n";
+    print "<input type=hidden name=last_first_coll8  value=\"$input{last_first_coll8}\">\n";
+
+
+    foreach $v (@biocode_schema) {
+	print "<input type=hidden name=$v value=\"$input{$v}\">\n";
+    }
+
+    print "<input type=submit value=\"Click Here to add another record with the same info\">\n";
+    print "</form>";
+
+    ## print no carry forward link
+    print "<form name=parentform action=/cgi/biocode_add_specimens method=post>\n";
+    print "<input type=hidden name=special value=another>\n";
+    print "<input type=hidden name=entry_by value=\"$input{entry_by}\">\n";
+    print "<input type=submit value=\"Click Here to add another record - new info\">\n";
+    print "</form>\n";
+
+    print "<br><br><a href=/cgi/biocode_query?bnhm_id=$input{bnhm_id_Num}&one=T  target=newwin>Click Here</a> to see the new record (new window).";
+
+    ## print out each field
+    print "<br><br><h4>Here are the values for the new record:</h4>\n";
+#    print "<table>\n";
+#   foreach $attr (@biocode_schema) {
+#	print "<tr><td align=right><i>$attr</i></td>\n";
+#	if ($input{$attr} eq "unselected") {$input{$attr} = "";}
+#	print "<td>$input{$attr}</td></tr>\n";
+#    }
+#    print "</table>\n";
+    print "<p>";
+    &print_biocode_footer;
+}
+
+
+sub send_email {
+
+    if ($its_an_update) {
+        open(MESSAGE, "| mailx -s \"Moorea Biocode database update \" $recipients");
+        print MESSAGE "A specimen record ($input{bnhm_id}) ";
+        print MESSAGE "has been updated in ";
+        print MESSAGE "the Moorea Biocode specimen database. \n\n";
+	print MESSAGE "URL:\n";
+	print MESSAGE "http://biocode.berkeley.edu/cgi/biocode_query?bnhm_id=$input{bnhm_id}&one=T&OK2SHOWPRIVATE=1\n\n";
+	print MESSAGE "Load file: $loadfile\n\n";
+	print MESSAGE "Weekly load file: $weeklycopy\n\n";
+
+    } elsif ($input{'mode'} eq "load2essig") {
+	open(MESSAGE, "| mailx -s \"Moorea Biocode record copied to Essig \" $recipients");
+	print MESSAGE "A Biocode specimen ($essig_val{OtherCatalogNumbers}) has been copied to Essig ($essig_val{bnhm_id}).\n\n";
+	print MESSAGE "http://essigdb.berkeley.edu/cgi/eme_query?bnhm_id=$essig_val{bnhm_id}&one=T\n";
+	$copy_cmts_nice = $copy_cmts;
+	$copy_cmts_nice =~ s/<li>/\n\t/g;
+	$copy_cmts_nice =~ s/<i>//g;
+	$copy_cmts_nice =~ s/<\/i>//g;
+	print MESSAGE "\n\nComments: $copy_cmts_nice\n";
+
+    } else {
+	open(MESSAGE, "| mailx -s \"Moorea Biocode database new specimen record \" $recipients");
+	print MESSAGE "A new specimen record ($input{bnhm_id}) ";
+	print MESSAGE "has been loaded into ";
+	print MESSAGE "the Moorea Biocode specimen database. \n\n";
+	print MESSAGE "URL:\n";
+	print MESSAGE "http://biocode.berkeley.edu/cgi/biocode_query?bnhm_id=$input{bnhm_id}&one=T&OK2SHOWPRIVATE=1\n\n";
+	print MESSAGE "Load file: $loadfile\n\n";
+	print MESSAGE "Weekly load file: $weeklycopy\n\n";
+    }
+        close(MESSAGE);
+}
+
+sub print_clear_form_button {
+    
+    $url_entry_by = $input{entry_by};
+    $url_entry_by =~ s/ /\+/g;
+    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "<a href=/cgi/biocode_add_specimens?entry_by=$url_entry_by&mode=newrecord>";
+    print "<small>[CLEAR FORM]</small></a>\n";
+
+
+    if ($Submit) {
+	print "<form name=parentform method=post action=\"/cgi/biocode_add_specimens\">\n";
+	print "<input type=hidden name=special value=another>\n";
+	print "<input type=hidden name=entry_by value=\"$input{entry_by}\">\n";
+	print "<br><input type=submit value=\"Clear Form\">\n\n";
+	print "</form>\n";
+    }
+}
+
+sub print_refresh_list_button {
+    
+    $url_entry_by = $input{entry_by};
+    $url_entry_by =~ s/ /\+/g;
+    print "&nbsp;&nbsp;&nbsp;&nbsp;";
+    print "<a href=/cgi/biocode_add_specimens?entry_by=$url_entry_by>";
+    print "[refresh list]</a>\n";
+
+}
+
+
+## ----------------------------------------------------------------------
+## The following subroutines start with the most specific term provided
+## on the input form ("lowest"), do a lookup to biocode_species, and call the
+## check_input_* subs below to verify and set higher taxonomic terms.
+## If the name isn't found in biocode_species, the user gets a link to add it.
+## ----------------------------------------------------------------------
+
+sub Genus_is_lowest_input_No_add_to_species_db_if_there {
+
+    # Do we have a species and subspecies?
+    if (!$input{SpecificEpithet}) {
+	$input{SpecificEpithet} = "sp.";
+	$input{ScientificName} = "$input{Genus} sp.";
+
+    } elsif ($input{SpecificEpithet}) {
+	
+	if (!$input{SubspecificEpithet}) {
+	    $input{ScientificName} = "$input{Genus} $input{SpecificEpithet}";
+	} else {
+	    $input{ScientificName} = "$input{Genus} $input{SpecificEpithet} $input{SubspecificEpithet}";
+	}
+    }
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select genus,subtribe,tribe,subfamily,family,superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where genus=\"$input{Genus}\" ";
+    if ($input{SpecificEpithet}) {
+        $query .= "and species=\"$input{SpecificEpithet}\" ";
+    }
+    if ($input{SubspecificEpithet}) {
+	$query .= " and subspecies = \"$input{SubspecificEpithet}\" ";
+    }
+    $query .= "group by family,superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Genus,$sp_Subtribe,$sp_Tribe,$sp_Subfamily,$sp_Family,$sp_Superfamily,$sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # $cmts .= "<li>query: $query\n";
+    # $cmts .= "<li>sp_Class: $sp_Class\n";
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Genus) {
+
+	&check_input_Subtribe;
+	&check_input_Tribe;
+        &check_input_Subfamily;
+        &check_input_Family;
+        &check_input_Superfamily;
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+        # clean up & make comments
+        # ----------------
+        if ($input{SpecificEpithet}) {
+            if ($highertax) {
+                $highertax =~ s/\, $//g;
+                $cmts .= "<dd><li>Found species \"$input{Genus} $input{SpecificEpithet} $input{SubspecificEpithet}\" ";
+                $cmts .= "in Moorea Biocode Species list;";
+                $cmts .= " added $highertax";
+                $highertax = "";
+            }
+        } else {
+            if ($highertax) {
+                $highertax =~ s/\, $//g;
+                $cmts .= "<dd><li>Found genus \"$input{Genus}\" in Moorea Biocode Species list;";
+                $cmts .= " added $highertax";
+                $highertax = "";
+            }
+        }
+
+    } elsif($input{SpecificEpithet}) {  # genus not found
+        local($n_url) = &urlify($input{entry_by});
+        $bad_msg .= "<dd><li>Species \"$input{Genus} $input{SpecificEpithet} ";
+        if($input{SubspecificEpithet}) {
+            $bad_msg .= "$input{SubSpecificEpithet} ";
+        }
+        $bad_msg .= "\"";
+        $bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+        $bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";   # ONE
+        $bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+        $bad_msg .= "&no_privileges=1&notfound=genus";
+        $gen_url = &urlify($input{Genus});
+        $spe_url = &urlify($input{SpecificEpithet});
+        $sub_url = &urlify($input{SubspecificEpithet});
+        $bad_msg .= "&species=$spe_url&genus=$gen_url";
+        if($input{SubspecificEpithet}) {
+            $bad_msg .= "&subspecies=$sub_url";
+        }
+        if($input{Subgenus}) {
+            local($val) = &urlify($input{Subgenus});
+            $bad_msg .= "&subgenus=$val";
+        }
+        if ($input{Subfamily}) {
+            local($val) = &urlify($input{Subfamily});
+            $bad_msg .= "&subfamily=$val";
+        }
+        if ($input{Family}) {
+            local($val) = &urlify($input{Family});
+            $bad_msg .= "&family=$val";
+        }
+        if ($input{Tribe}) {
+            local($val) = &urlify($input{Tribe});
+            $bad_msg .= "&tribe=$val";
+        }
+        if ($input{Subtribe}) {
+            local($val) = &urlify($input{Subtribe});
+            $bad_msg .= "&subtribe=$val";
+        }
+        if ($input{Superfamily}) {
+            local($val) = &urlify($input{Superfamily});
+            $bad_msg .= "&superfamily=$val";
+        }
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+            local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	## added 6/21/2006 - Ginger
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+
+
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+    } else {  # genus not found
+        local($n_url) = &urlify($input{entry_by});
+        $bad_msg .= "<dd><li>Genus \"$input{Genus}\" ";
+        $bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+        $bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # TWO
+        $bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+        $bad_msg .= "&no_privileges=1&notfound=family";
+        $gen_url = &urlify($input{Genus});
+        $bad_msg .= "&species=sp.&genus=$gen_url";
+        if ($input{Subfamily}) {
+            local($val) = &urlify($input{subfamily});
+            $bad_msg .= "&subfamily=$val";
+        }
+        if ($input{Family}) {
+            local($val) = &urlify($input{Family});
+            $bad_msg .= "&family=$val";
+        }
+        if ($input{Superfamily}) {
+            local($val) = &urlify($input{Superfamily});
+            $bad_msg .= "&superfamily=$val";
+        }
+        if ($input{Tribe}) {
+            local($val) = &urlify($input{Tribe});
+            $bad_msg .= "&tribe=$val";
+        }
+        if ($input{Subtribe}) {
+            local($val) = &urlify($input{Subtribe});
+            $bad_msg .= "&subtribe=$val";
+        }
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+            local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	## added 6/21/2006 Ginger
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+
+
+
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+    }
+
+}
+
+sub Genus_is_lowest_input {
+
+    # Do we have a species and subspecies?
+    if (!$input{SpecificEpithet}) {
+	$input{SpecificEpithet} = "sp.";
+	$input{ScientificName} = "$input{Genus} sp.";
+
+    } elsif ($input{SpecificEpithet}) {
+	
+	if (!$input{SubspecificEpithet}) {
+	    $input{ScientificName} = "$input{Genus} $input{SpecificEpithet}";
+	} else {
+	    $input{ScientificName} = "$input{Genus} $input{SpecificEpithet} $input{SubspecificEpithet}";
+	}
+    }
+    
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select seq_num,subgenus,subtribe,tribe,subfamily,family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom,author,year ";
+    $query .= "from biocode_species ";
+    $query .= "where genus=\"$input{Genus}\" ";
+#    if ($input{SpecificEpithet}) {
+        $query .= "and species=\"$input{SpecificEpithet}\" ";
+#    }
+
+    if ($input{SubspecificEpithet}) {
+	$query .= " and subspecies = \"$input{SubspecificEpithet}\" ";
+    }
+
+    ##DEBUG $cmts .= "<br>Query to biocode_species: $query</br>\n";
+
+    ($sp_seq_num,$sp_Subgenus,$sp_Subtribe,$sp_Tribe,$sp_Subfamily,$sp_Family,$sp_Superfamily,$sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom,$sp_author,$sp_year) = &get_one_record($query,"biocode");
+    
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_seq_num) {  
+
+	&check_input_Subgenus;
+	&check_input_Subtribe;
+	&check_input_Tribe;
+	&check_input_Subfamily;
+	&check_input_Family;
+	&check_input_Superfamily;
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+	&check_input_ScientificNameAuthor;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found Scientific Name \"$input{ScientificName}\" ";
+	    $cmts .= "in Moorea Biocode Species list; added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found in biocode_species
+
+	local($g_url) = &urlify($input{Genus});
+	local($s_url) = &urlify($input{SpecificEpithet});
+	local($n_url) = &urlify($input{entry_by});
+	$bad_msg .= "<dd><li>Scientific Name \"$input{ScientificName}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+	$bad_msg .= "Are you sure you want to add this as a new species? If so, please be sure of the spelling.";
+
+	## create URL to biocode_species
+	$add_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add"; # THREE
+	$add_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$add_msg .= "&no_privileges=1&notfound=species";
+	$add_msg .= "&genus=$g_url&species=$s_url";
+
+	if ($input{SubspecificEpithet}) {
+	    local($val) = &urlify($input{SubspecificEpithet});
+	    # $add_msg .= "&subspecies=$val";
+	    $bad_msg .= "&subspecies=$val";
+	}
+	if ($input{Subgenus}) {
+	    local($val) = &urlify($input{Subgenus});
+            # $add_msg .= "&subgenus=$val";
+            $bad_msg .= "&subgenus=$val";
+	}
+	if ($input{Subtribe}) {
+	    local($val) = &urlify($input{Subtribe});
+            # $add_msg .= "&subtribe=$val";
+            $bad_msg .= "&subtribe=$val";
+        }
+	if ($input{Tribe}) {
+	    local($val) = &urlify($input{Tribe});
+            # $add_msg .= "&tribe=$val";
+            $bad_msg .= "&tribe=$val";
+        }
+	if ($input{Subfamily}) {
+	    local($val) = &urlify($input{Subfamily});
+            # $add_msg .= "&subfamily=$val";
+            $bad_msg .= "&subfamily=$val";
+        }
+	if ($input{Family}) {
+	    local($val) = &urlify($input{Family});
+            # $add_msg .= "&family=$val";
+            $bad_msg .= "&family=$val";
+        }
+	if ($input{Superfamily}) {
+	    local($val) = &urlify($input{Superfamily});
+            # $add_msg .= "&superfamily=$val";
+            $bad_msg .= "&superfamily=$val";
+        }
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+	    local($val) = &urlify($input{Suborder});
+            # $add_msg .= "&suborder=$val";
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+	    local($val) = &urlify($input{Ordr});
+            # $add_msg .= "&ordr=$val";
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+	if ($input{Infraclass}) {
+	    local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+	if ($input{Subclass}) {
+	    local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+	    local($val) = &urlify($input{Class});
+            # $add_msg .= "&class=$val";
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            # $add_msg .= "&phylum=$val";
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+
+
+	if ($input{SpecificEpithet} eq "sp.") {
+	    # don't check author - there isn't one
+	    $SPECIES_UNKN = 1;
+
+	} else {
+	    &check_ScientificNameAuthor;
+	    if ($input{ScientificNameAuthor} && $OK_2_INCLUDE_AUTHOR) {
+		## at this point, author/year format has been checked
+	    
+		$input{ScientificNameAuthor} =~ s/&/and/g;
+		($sci_auth,$sci_auth_date) = &format_author_year_for_biocode_species("$input{ScientificNameAuthor}");
+		$sci_auth = &urlify($sci_auth);
+		# $add_msg .= "&author=$sci_auth";
+		# $add_msg .= "&year=$sci_auth_date";
+		$bad_msg .= "&author=$sci_auth";
+		$bad_msg .= "&year=$sci_auth_date";
+	    }
+	}
+	
+        $add_msg .= ">click here to add it</a> ";
+        $add_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+	    
+	## add a link to biocode_species if everything is OK
+	if ($OK_2_INCLUDE_AUTHOR || $SPECIES_UNKN) {
+	    $bad_msg .= $add_msg ;
+	}
+    }
+}
+
+sub Subgenus_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select subtribe,tribe,subfamily,family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where subgenus=\"$input{Subgenus}\" ";
+    $query .= "group by subtribe,tribe,subfamily,family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Subtribe,$sp_Tribe,$sp_Subfamily,$sp_Family,$sp_Superfamily,$sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+    
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+
+	&check_input_Subtribe;
+	&check_input_Tribe;
+	&check_input_Subfamily;
+	&check_input_Family;
+	&check_input_Superfamily;
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;      
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found Subgenus \"$input{Subgenus}\" in Moorea Biocode Species list; ";
+	    $cmts .= "added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found
+	$bad_msg .= "<dd><li>Subgenus \"$input{Subgenus}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+	$bad_msg .= "Please enter a genus to create a new record in the Moorea Biocode Species list. ";
+
+    }
+}
+
+sub Subtribe_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select tribe,subfamily,family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where subtribe=\"$input{Subtribe}\" ";
+    $query .= "group by tribe,subfamily,family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Tribe,$sp_Subfamily,$sp_Family,$sp_Superfamily,$sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+    
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+	&check_input_Tribe;
+	&check_input_Subfamily;
+	&check_input_Family;
+	&check_input_Superfamily;
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;      
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found subtribe \"$input{Subtribe}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found
+	$bad_msg .= "<dd><li>Subtribe \"$input{Subtribe}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add"; # FOUR
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=subtribe";
+	$subtr_url = &urlify($input{Subtribe});
+        $bad_msg .= "&genus=undetermined&species=sp.&subtribe=$subtr_url";
+
+	if ($input{Tribe}) {
+	    local($val) = &urlify($input{Tribe});
+            # $add_msg .= "&tribe=$val";
+            $bad_msg .= "&tribe=$val"; # fixed bug 10/19/2006
+        }
+	if ($input{Subfamily}) {
+	    local($val) = &urlify($input{Subfamily});
+            # $add_msg .= "&subfamily=$val";
+            $bad_msg .= "&subfamily=$val"; # fixed bug 10/19/2006
+        }
+	if ($input{Family}) {
+	    local($val) = &urlify($input{Family});
+            # $add_msg .= "&family=$val";
+            $bad_msg .= "&family=$val";  # fixed bug 10/19/2006
+        }
+	if ($input{Superfamily}) {
+	    local($val) = &urlify($input{Superfamily});
+            $bad_msg .= "&superfamily=$val";
+        }
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+            local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+    }
+}
+
+sub Tribe_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select subfamily,family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where tribe=\"$input{Tribe}\" ";
+    $query .= "group by subfamily,family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Subfamily,$sp_Family,$sp_Superfamily,$sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+
+	&check_input_Subfamily;
+	&check_input_Family;
+	&check_input_Superfamily;
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;    
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found tribe \"$input{Tribe}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found
+	$bad_msg .= "<dd><li>Tribe \"$input{Tribe}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";     # FIVE
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=tribe";
+	$tribe_url = &urlify($input{Tribe});
+        $bad_msg .= "&genus=undetermined&species=sp.&tribe=$tribe_url";
+
+
+	if ($input{Subfamily}) {
+	    local($val) = &urlify($input{Subfamily});
+            # $add_msg .= "&subfamily=$val";
+            $bad_msg .= "&subfamily=$val"; # fixed bug 10/19/2006
+        }
+	if ($input{Family}) {
+	    local($val) = &urlify($input{Family});
+            # $add_msg .= "&family=$val";
+            $bad_msg .= "&family=$val"; # fixed bug 10/19/2006
+        }
+	if ($input{Superfamily}) {
+	    local($val) = &urlify($input{Superfamily});
+            $bad_msg .= "&superfamily=$val";
+        }
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+            local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+    }
+}
+
+
+sub Subfamily_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where subfamily=\"$input{Subfamily}\" ";
+    $query .= "group by family,";
+    $query .= "superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    # if ($DEBUG) {$cmts .= "<br>Query to biocode_species: $query</br>\n";}
+
+    ($sp_Family,$sp_Superfamily,$sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+
+	&check_input_Family;
+	&check_input_Superfamily;
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found subfamily \"$input{Subfamily}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found
+        $bad_msg .= "<dd><li>Subfamily \"$input{Subfamily}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # SIX
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=subfamily";
+	$subfamily_url = &urlify($input{Subfamily});
+        $bad_msg .= "&genus=undetermined&species=sp.&subfamily=$subfamily_url";
+
+
+	if ($input{Family}) {
+	    local($val) = &urlify($input{Family});
+            # $add_msg .= "&family=$val";  # bug fixed 10/19/2006 ?
+            $bad_msg .= "&family=$val";
+        }
+	if ($input{Superfamily}) {
+	    local($val) = &urlify($input{Superfamily});
+            $bad_msg .= "&superfamily=$val";
+        }
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+            local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+    }
+}
+
+
+sub Family_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where family=\"$input{Family}\" ";
+    $query .= "group by superfamily,infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Superfamily,$sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    #if ($sp_Order) {  
+    if ($sp_Phylum) {
+
+	&check_input_Superfamily;
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found family \"$input{Family}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # family not found
+	local($n_url) = &urlify($input{entry_by});
+	$bad_msg .= "<dd><li>Family \"$input{Family}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";   # SEVEN
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=family";
+	$fam_url = &urlify($input{Family});
+        $bad_msg .= "&genus=undetermined&species=sp.&family=$fam_url";
+	if ($input{Superfamily}) {
+	    local($val) = &urlify($input{Superfamily});
+            $bad_msg .= "&superfamily=$val";
+        }
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+            local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+    }
+}
+
+
+sub Superfamily_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where Superfamily=\"$input{Superfamily}\" ";
+    $query .= "group by infraorder,suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Infraorder,$sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+
+        &check_input_Infraorder;
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found Superfamily \"$input{Superfamily}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found
+	local($n_url) = &urlify($input{entry_by});
+	$bad_msg .= "<dd><li>Superfamily \"$input{Superfamily}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # EIGHT
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=superfamily";
+	$superfam_url = &urlify($input{Superfamily});
+        $bad_msg .= "&genus=undetermined&species=sp.&superfamily=$superfam_url";
+
+
+        if ($input{Infraorder}) {
+            local($val) = &urlify($input{Infraorder});
+            $bad_msg .= "&infraorder=$val";
+        }
+        if ($input{Suborder}) {
+	    local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+	    local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+
+	if ($input{Infraclass}) {
+	    local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+	if ($input{Subclass}) {
+	    local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+	    local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+
+    }
+}
+
+sub Infraorder_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where Superfamily=\"$input{Superfamily}\" ";
+    $query .= "group by suborder,ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Suborder,$sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {
+
+        &check_input_Suborder;
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+        # clean up & make comments
+        # ----------------
+        if ($highertax) {
+            $highertax =~ s/\, $//g;
+            $cmts .= "<dd><li>Found Superfamily \"$input{Superfamily}\" in Moorea Biocode Species list;";
+            $cmts .= " added $highertax";
+            $highertax = "";
+        }
+
+    } else {  # name not found
+        local($n_url) = &urlify($input{entry_by});
+        $bad_msg .= "<dd><li>Superfamily \"$input{Superfamily}\" ";
+        $bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+        $bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # EIGHT
+        $bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+        $bad_msg .= "&no_privileges=1&notfound=superfamily";
+        $superfam_url = &urlify($input{Superfamily});
+        $bad_msg .= "&genus=undetermined&species=sp.&superfamily=$superfam_url";
+
+        if ($input{Suborder}) {
+            local($val) = &urlify($input{Suborder});
+            $bad_msg .= "&suborder=$val";
+        }
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+
+        if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+        if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+
+    }
+
+
+
+
+}
+
+sub Suborder_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where suborder=\"$input{Suborder}\" ";
+    $query .= "group by ordr,superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Order,$sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+
+        &check_input_Ordr;
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found suborder \"$input{Suborder}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found
+	local($n_url) = &urlify($input{entry_by});
+	$bad_msg .= "<dd><li>Suborder \"$input{Suborder}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # NINE
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=suborder";
+	$suborder_url = &urlify($input{Suborder});
+        $bad_msg .= "&genus=undetermined&species=sp.&suborder=$suborder_url";
+
+
+        if ($input{Ordr}) {
+            local($val) = &urlify($input{Ordr});
+            $bad_msg .= "&ordr=$val";
+        }
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+    }
+}
+
+
+sub Ordr_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where ordr=\"$input{Ordr}\" ";
+    $query .= "group by superorder,infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Superorder,$sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+
+        &check_input_SuperOrder;
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found order \"$input{Ordr}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found  
+	local($n_url) = &urlify($input{entry_by});
+	$bad_msg .= "<dd><li>Order \"$input{Ordr}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # TEN
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=ordr";
+	$order_url = &urlify($input{Ordr});
+        $bad_msg .= "&genus=undetermined&species=sp.&ordr=$order_url";
+
+
+        if ($input{Superorder}) {
+            local($val) = &urlify($input{Superorder});
+            $bad_msg .= "&superorder=$val";
+        }
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+
+    }
+}
+
+
+sub Superorder_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where ordr=\"$input{Superorder}\" ";
+    $query .= "group by infraclass,subclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Infraclass,$sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {
+
+        &check_input_Infraclass;
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+        # clean up & make comments
+        # ----------------
+        if ($highertax) {
+            $highertax =~ s/\, $//g;
+            $cmts .= "<dd><li>Found order \"$input{Ordr}\" in Moorea Biocode Species list;";
+            $cmts .= " added $highertax";
+            $highertax = "";
+        }
+
+    } else {  # name not found
+        local($n_url) = &urlify($input{entry_by});
+        $bad_msg .= "<dd><li>Order \"$input{Ordr}\" ";
+        $bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+        $bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # TEN
+        $bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+        $bad_msg .= "&no_privileges=1&notfound=ordr";
+        $order_url = &urlify($input{Ordr});
+        $bad_msg .= "&genus=undetermined&species=sp.&ordr=$order_url";
+
+
+        if ($input{Infraclass}) {
+            local($val) = &urlify($input{Infraclass});
+            $bad_msg .= "&infraclass=$val";
+        }
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+        if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+        if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+    }
+
+
+}
+
+
+sub Infraclass_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select subclass,class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where subclass=\"$input{Infraclass}\" ";
+    $query .= "group by infraclass,class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Subclass,$sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Class) {
+
+        &check_input_Subclass;
+        &check_input_Class;
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+        # clean up & make comments
+        # ----------------
+        if ($highertax) {
+            $highertax =~ s/\, $//g;
+            $cmts .= "<dd><li>Found subclass \"$input{Subclass}\" in Moorea Biocode Species list;";
+            $cmts .= " added $highertax";
+            $highertax = "";
+        }
+
+    } else {  # name not found
+        local($n_url) = &urlify($input{entry_by});
+        $bad_msg .= "<dd><li>Subclass \"$input{Subclass}\" ";
+        $bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+        $bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # ELEVEN
+        $bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+        $bad_msg .= "&no_privileges=1&notfound=subclass";
+        $subclass_url = &urlify($input{Subclass});
+        $bad_msg .= "&genus=undetermined&species=sp.&subclass=$subclass_url";
+
+        if ($input{Subclass}) {
+            local($val) = &urlify($input{Subclass});
+            $bad_msg .= "&subclass=$val";
+        }
+        if ($input{Class}) {
+            local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+        if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+        if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+
+    }
+}
+
+
+sub Subclass_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select class,superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where subclass=\"$input{Subclass}\" ";
+    $query .= "group by class,superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Class,$sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Class) {  
+
+	&check_input_Class;
+	&check_input_Superclass;
+	&check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found subclass \"$input{Subclass}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found  
+	local($n_url) = &urlify($input{entry_by});
+	$bad_msg .= "<dd><li>Subclass \"$input{Subclass}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # ELEVEN
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=subclass";
+	$subclass_url = &urlify($input{Subclass});
+        $bad_msg .= "&genus=undetermined&species=sp.&subclass=$subclass_url";
+
+        if ($input{Class}) {
+	    local($val) = &urlify($input{Class});
+            $bad_msg .= "&class=$val";
+        }
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+
+    }
+}
+
+
+sub Class_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select superclass,subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where class=\"$input{Class}\" ";
+    $query .= "group by superclass,subphylum,phylum,kingdom ";
+
+    ($sp_Superclass,$sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {  
+        &check_input_Superclass;
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+	# clean up & make comments
+	# ----------------
+	if ($highertax) {
+	    $highertax =~ s/\, $//g;
+	    $cmts .= "<dd><li>Found class \"$input{Class}\" in Moorea Biocode Species list;";
+	    $cmts .= " added $highertax";
+	    $highertax = "";
+	}
+
+    } else {  # name not found  
+	local($n_url) = &urlify($input{entry_by});
+	$bad_msg .= "<dd><li>Class \"$input{Class}\" ";
+	$bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+	$bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # TWELVE
+	$bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+	$bad_msg .= "&no_privileges=1&notfound=class";
+	$class_url = &urlify($input{Class});
+        $bad_msg .= "&genus=undetermined&species=sp.&class=$class_url";
+
+        if ($input{Superclass}) {
+            local($val) = &urlify($input{Superclass});
+            $bad_msg .= "&superclass=$val";
+        }
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+	if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+	if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+
+    }
+}
+
+
+sub Superclass_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select subphylum,phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where class=\"$input{Superclass}\" ";
+    $query .= "group by subphylum,phylum,kingdom ";
+
+    ($sp_Subphylum,$sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {
+        &check_input_Subphylum;
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+        # clean up & make comments
+        # ----------------
+        if ($highertax) {
+            $highertax =~ s/\, $//g;
+            $cmts .= "<dd><li>Found class \"$input{Class}\" in Moorea Biocode Species list;";
+            $cmts .= " added $highertax";
+            $highertax = "";
+        }
+
+    } else {  # name not found
+        local($n_url) = &urlify($input{entry_by});
+        $bad_msg .= "<dd><li>Class \"$input{Class}\" ";
+        $bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+        $bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # TWELVE
+        $bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+        $bad_msg .= "&no_privileges=1&notfound=class";
+        $class_url = &urlify($input{Class});
+        $bad_msg .= "&genus=undetermined&species=sp.&class=$class_url";
+
+        if ($input{Subphylum}) {
+            local($val) = &urlify($input{Subphylum});
+            $bad_msg .= "&subphylum=$val";
+        }
+        if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+        if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+    }
+
+}
+
+
+
+sub Subphylum_is_lowest_input {
+
+    # Lookup higher taxonomy in species table
+    # -----------------------------------------------------------
+    local($query) = "select phylum,kingdom ";
+    $query .= "from biocode_species ";
+    $query .= "where class=\"$input{Subphylum}\" ";
+    $query .= "group by phylum,kingdom ";
+
+    ($sp_Phylum,$sp_Kingdom) = &get_one_record($query,"biocode");
+
+    # Check input values against biocode_species results
+    # ----------------------------------------------
+    if ($sp_Phylum) {
+        &check_input_Phylum;             # have to do something for phylum check
+        &check_input_Kingdom;
+
+        # clean up & make comments
+        # ----------------
+        if ($highertax) {
+            $highertax =~ s/\, $//g;
+            $cmts .= "<dd><li>Found class \"$input{Class}\" in Moorea Biocode Species list;";
+            $cmts .= " added $highertax";
+            $highertax = "";
+        }
+
+    } else {  # name not found
+        local($n_url) = &urlify($input{entry_by});
+        $bad_msg .= "<dd><li>Class \"$input{Class}\" ";
+        $bad_msg .= "not found in Moorea Biocode Species list. &nbsp; ";
+
+        $bad_msg .= "<a target=add href=/cgi/biocode_edit_species?step=add";  # TWELVE
+        $bad_msg .= "&source=specimen&checkflag=1&fullname=$n_url";
+        $bad_msg .= "&no_privileges=1&notfound=class";
+        $class_url = &urlify($input{Class});
+        $bad_msg .= "&genus=undetermined&species=sp.&class=$class_url";
+
+        if ($input{Phylum}) {
+            local($val) = &urlify($input{Phylum});
+            $bad_msg .= "&phylum=$val";
+        }
+        if ($input{Kingdom}) {
+            local($val) = &urlify($input{Kingdom});
+            $bad_msg .= "&kingdom=$val";
+        }
+        $bad_msg .= ">click here to add it</a> ";
+        $bad_msg .= "&nbsp; or &nbsp; <a href=/cgi/biocode_species_query_form target=new>view species query form</a>";
+
+    }
+
+
+}
+
+
+
+## ----------------------------------------------------------------------
+## The following subroutines check each taxonomic term that was input
+## against what's in the biocode_species. If nothing was input, then the
+## biocode_species value is used. An error results if input doesn't
+## match biocode_species.
+## ----------------------------------------------------------------------
+
+sub check_input_Subgenus {
+
+    if ($input{Subgenus}) {
+	if ($input{Subgenus} ne $sp_Subgenus) {
+	    $bad_msg .= "<dd><li>Subgenus \"$input{Subgenus}\" doesn't match ";
+	    $bad_msg .= "subgenus \"$sp_Subgenus\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Subgenus) {       # subgenus was blank
+	$input{Subgenus} = $sp_Subgenus;
+	$highertax .= "Subgenus, ";
+    }
+}
+
+
+sub check_input_Subtribe {
+
+    if ($input{Subtribe}) {
+	if ($input{Subtribe} ne $sp_Subtribe) {
+	    $bad_msg .= "<dd><li>Subtribe \"$input{Subtribe}\" doesn't match ";
+	    $bad_msg .= "subtribe \"$sp_Subtribe\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Subtribe) {	# subtribe was blank
+	$input{Subtribe} = $sp_Subtribe;
+	$highertax .= "Subtribe, ";
+    }
+}
+
+sub check_input_Tribe {
+
+    if ($input{Tribe}) {
+	if ($input{Tribe} ne $sp_Tribe) {
+	    $bad_msg .= "<dd><li>Tribe \"$input{Tribe}\" doesn't match ";
+	    $bad_msg .= "tribe \"$sp_Tribe\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Tribe) {	# tribe was blank
+	$input{Tribe} = $sp_Tribe;
+	$highertax .= "Tribe, ";
+    }
+}
+
+sub check_input_Subfamily {
+
+    if ($input{Subfamily}) {
+	if ($input{Subfamily} ne $sp_Subfamily) {
+	    $bad_msg .= "<dd><li>Subfamily \"$input{Subfamily}\" doesn't match ";
+	    $bad_msg .= "Subfamily \"$sp_Subfamily\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Subfamily) {	# subfamily was blank
+	$input{Subfamily} = $sp_Subfamily;
+	$highertax .= "Subfamily, ";
+    }
+}
+
+sub check_input_Family {
+
+    if ($input{Family}) {
+	if ($input{Family} ne $sp_Family) {
+	    $bad_msg .= "<dd><li>Family \"$input{Family}\" doesn't match ";
+	    $bad_msg .= "family \"$sp_Family\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Family) {	# family was blank
+	$input{Family} = $sp_Family;
+	$highertax .= "Family, ";
+    }
+}
+
+
+sub check_input_Superfamily {
+
+    if ($input{Superfamily}) {
+	if ($input{Superfamily} ne $sp_Superfamily) {
+	    $bad_msg .= "<dd><li>Superfamily \"$input{Superfamily}\" doesn't match ";
+	    $bad_msg .= "Superfamily \"$sp_Superfamily\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Superfamily) {	# superfamily was blank
+	$input{Superfamily} = $sp_Superfamily;
+	$highertax .= "Superfamily, ";
+    }
+}
+
+sub check_input_Infraorder {
+
+    if ($input{Infraorder}) {
+	if ($input{Infraorder} ne $sp_Infraorder) {
+	    $bad_msg .= "<dd><li>Infraorder \"$input{Infraorder}\" doesn't match ";
+	    $bad_msg .= "infraorder \"$sp_Infraorder\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Infraorder) {	# Infraorder was blank
+	$input{Infraorder} = $sp_Infraorder;
+	$highertax .= "Infraorder, ";
+    }
+}
+
+sub check_input_Suborder {
+
+    if ($input{Suborder}) {
+	if ($input{Suborder} ne $sp_Suborder) {
+	    $bad_msg .= "<dd><li>Suborder \"$input{Suborder}\" doesn't match ";
+	    $bad_msg .= "suborder \"$sp_Suborder\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Suborder) {	# Suborder was blank
+	$input{Suborder} = $sp_Suborder;
+	$highertax .= "Suborder, ";
+    }
+}
+
+sub check_input_Ordr {
+
+    if ($input{Ordr}) {
+	if ($input{Ordr} ne $sp_Order) {
+	    $bad_msg .= "<dd><li>Order \"$input{Ordr}\" doesn't match ";
+	    $bad_msg .= "order \"$sp_Order\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Order) {    # order was blank
+	$input{Ordr} = $sp_Order;
+	$highertax .= "Order, ";
+    }
+}
+
+sub check_input_SuperOrder {
+
+    if ($input{Superorder}) {
+	if ($input{Superorder} ne $sp_Superorder) {
+	    $bad_msg .= "<dd><li>Superorder \"$input{Superorder}\" doesn't match ";
+	    $bad_msg .= "order \"$sp_Superorder\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Superorder) {    # order was blank
+	$input{Superorder} = $sp_Superorder;
+	$highertax .= "Superorder, ";
+    }
+}
+
+sub check_input_Infraclass {
+
+    if ($input{Infraclass}) {
+	if ($input{Infraclass} ne $sp_Infraclass) {
+	    $bad_msg .= "<dd><li>Infraclass \"$input{Infraclass}\" doesn't match ";
+	    $bad_msg .= "Infraclass \"$sp_Infraclass\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Infraclass) {       # tribe was blank
+	$input{Infraclass} = $sp_Infraclass;
+	$highertax .= "Infraclass, ";
+    }
+}
+
+sub check_input_Subclass {
+
+    if ($input{Subclass}) {
+	if ($input{Subclass} ne $sp_Subclass) {
+	    $bad_msg .= "<dd><li>Subclass \"$input{Subclass}\" doesn't match ";
+	    $bad_msg .= "Subclass \"$sp_Subclass\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Subclass) {       # tribe was blank
+	$input{Subclass} = $sp_Subclass;
+	$highertax .= "Subclass, ";
+    }
+}
+
+sub check_input_Class {
+
+    if ($input{Class}) {
+	if ($input{Class} ne $sp_Class) {
+	    $bad_msg .= "<dd><li>Class \"$input{Class}\" doesn't match ";
+	    $bad_msg .= "Class \"$sp_Class\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Class) {    
+	$input{Class} = $sp_Class;
+	$highertax .= "Class, ";
+    }
+}
+
+sub check_input_Superclass {
+
+    if ($input{Superclass}) {
+	if ($input{Superclass} ne $sp_Superclass) {
+	    $bad_msg .= "<dd><li>Superclass \"$input{Superclass}\" doesn't match ";
+	    $bad_msg .= "Superclass \"$sp_Superclass\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Superclass) {    
+	$input{Superclass} = $sp_Superclass;
+	$highertax .= "Superclass, ";
+    }
+}
+
+sub check_input_Subphylum {
+
+    if ($input{Suphylum}) {
+	if ($input{Subphylum} ne $sp_Subphylum) {
+	    $bad_msg .= "<dd><li>Subphylum \"$input{Subphylum}\" doesn't match ";
+	    $bad_msg .= "Subphylum \"$sp_Subphylum\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Subphylum) {
+	$input{Subphylum} = $sp_Subphylum;
+	$highertax .= "Subphylum, ";
+    } 
+}
+
+sub check_input_Phylum {
+
+    if ($input{Phylum}) {
+	if ($input{Phylum} ne $sp_Phylum) {
+	    $bad_msg .= "<dd><li>Phylum \"$input{Phylum}\" doesn't match ";
+	    $bad_msg .= "Phylum \"$sp_Phylum\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Phylum) {
+	$input{Phylum} = $sp_Phylum;
+	$highertax .= "Phylum, ";
+    } 
+}
+
+sub check_input_Kingdom {
+
+    if ($input{Kingdom}) {
+	if ($input{Kingdom} ne $sp_Kingdom) {
+	    $bad_msg .= "<dd><li>Kingdom \"$input{Kingdom}\" doesn't match ";
+	    $bad_msg .= "Kingdom \"$sp_Kingdom\" in Moorea Biocode Species list";
+	}
+    } elsif ($sp_Kingdom) {
+	$input{Kingdom} = $sp_Kingdom;
+#       $Kingdom = $sp_Kingdom;
+	$highertax .= "Kingdom, ";
+    } 
+}
+
+sub check_ScientificNameAuthor {
+
+    ## this only gets called if we have a genus and species
+    ##  *and* the name was not found in biocode_species (so we
+    ##  need to verify it)
+
+    local($auth) = $input{ScientificNameAuthor};
+
+    ## check format
+    $OK_2_INCLUDE_AUTHOR = 1;  # disabled author year requirement for biocode 3/12/06 (added this line)
+## disabled author year requirement for biocode on Mar 12, 2006
+#    if (!$auth) {
+#	$AUTHOR_NOT_INPUT = 1;
+#	$bad_msg .= "<dd><li>Author & Date are required for names not found in Moorea Biocode Species list";
+#
+#    } elsif ($auth =~ /\S\, *\d\d\d\d\)?$/ || $auth =~ /\S,\s*MSS$/ ) {
+#	$OK_2_INCLUDE_AUTHOR = 1;
+#
+#    } else {
+#	$bad_msg .= "<dd><li>Author & Date format must be <i>author, YYYY</i> or ";
+#	$bad_msg .= "<i>(author, YYYY)</i> or <i>author, MSS</i>\n";
+#	$OK_2_INCLUDE_AUTHOR = 0;
+#    }
+}
+
+sub check_input_ScientificNameAuthor {
+ 
+    # Here, we found the species in biocode_species, so we are just
+    # confirming that everything matches.
+
+    if ($sp_author || $sp_year) {
+	$sp_scinameauthor = &format_author_year($sp_author,$sp_year);
+    }
+    if ($input{ScientificNameAuthor} && $sp_scinameauthor) {
+	if ($input{ScientificNameAuthor} ne $sp_scinameauthor) {
+	    ## just change it to what's in biocode_species
+	    $input{ScientificNameAuthor} =  $sp_scinameauthor;
+	    $cmts .= "<dd><li>Changed author/date to $sp_scinameauthor";
+	}
+    } elsif ($sp_scinameauthor) {     
+	$input{ScientificNameAuthor} = $sp_scinameauthor;
+	$highertax .= "ScientificNameAuthor, ";
+
+    } elsif ($input{ScientificNameAuthor}) {
+
+    }
+}
+
+sub loadbiocode2essig {
+
+    # given an MBIO number, create an EME record
+
+    ## load up Biocode values
+     @clone_row = split(/\|/,$input{row});  # hidden field from form
+     foreach $bc_val (@biocode_schema) {
+    	${$bc_val} = $clone_row[$rowcount];
+        $rowcount++;
+    }
+    # print "<p><b>Biocode</b><p>\n";
+    $rowcount = 0;
+    foreach $v (@biocode_schema) {
+	# DEBUG  print "<li><font color=orange>$v</font>: ${$v}\n";
+
+	# Make a few changes
+        if ($v eq "Notes") {
+	    if (${$v}) {  # ignore if blank
+	        $essig_val{$v} = ${$v};
+            } else {
+		$essig_val{Notes} .= ${$v};
+            }
+
+        # Values in biocode but not essig
+        #  (see test:/biocode/essig_biocode_schema_compare.xls)
+
+        } elsif ($v eq "Collector6" && ${$v}) {
+            $coll678 = " ${$v}, ";
+        } elsif ($v eq "Collector7" && ${$v}) {
+            $coll678 .= " ${$v}, ";
+        } elsif ($v eq "Collector8" && ${$v}) {
+            $coll678 .= " ${$v}, ";
+        } elsif ($v eq "TimeofDay2" && ${$v}) {
+            $coll_info .= " Collections Time2: ${$v}";
+        } elsif ($v eq "DecimalLongitude2" && ${$v}) {
+            $coll_info .= " Long2: ${$v}";
+	} elsif ($v eq "VerbatimLongitude2" && ${$v}) {
+            $coll_info .= " (verbatim long: ${$v})";
+	} elsif ($v eq "DecimalLatitude2" && ${$v}) {
+            $coll_info .= " Lat2: ${$v}";
+	} elsif ($v eq "VerbatimLatitude2" && ${$v}) {
+             $coll_info .= " (verbatim lat: ${$v})";
+	 } elsif ($v eq "DepthOfBottomMeters" && ${$v}) {
+             $coll_info .= " Depth of Bottom: ${$v} m.";
+	 } elsif ($v eq "DepthErrorMeters" && ${$v}) {
+             $coll_info .= " Depth Error: ${$v} m.";
+	 } elsif ($v eq "Subphylum" && ${$v}) {
+             $essig_val{Notes} .= " Subphylum: ${$v}";
+	     $essig_val{namesoup} .= " ${$v}";
+	 } elsif ($v eq "Superclass" && ${$v}) {
+             $essig_val{Notes} .= " Superclass: ${$v}";
+	     $essig_val{namesoup} .= " ${$v}";
+	 } elsif ($v eq "Infraclass" && ${$v}) {
+             $essig_val{Notes} .= " Infraclass: ${$v}";
+	     $essig_val{namesoup} .= " ${$v}";
+	 } elsif ($v eq "Superorder" && ${$v}) {
+             $essig_val{Notes} .= " Superorder: ${$v}";
+	     $essig_val{namesoup} .= " ${$v}";
+	 } elsif ($v eq "MorphoSpecies_Match" && ${$v}) {
+             $essig_val{Notes} .= " Morpho Species Match: ${$v}";
+	 } elsif ($v eq "BasisOfID" && ${$v}) {
+             $essig_val{Notes} .= " Basis of ID: ${$v}";
+	 } elsif ($v eq "Weight" && ${$v}) {
+             $essig_val{Notes} .= " Weight: ${$v}";
+	 } elsif ($v eq "WeightUnits" && ${$v}) {
+             $essig_val{Notes} .= " WeightUnits: ${$v}";
+	 } elsif ($v eq "Length" && ${$v}) {
+             $essig_val{Notes} .= " Length: ${$v}";
+	 } elsif ($v eq "LengthUnits" && ${$v}) {
+             $essig_val{Notes} .= " LengthUnits: ${$v}";
+
+	} elsif ($v eq "preservative" && ${$v}) {
+	    $essig_val{Notes} .= " Preservative: ${$v}";
+        } elsif ($v eq "relaxant" && ${$v}) {
+            $essig_val{Notes} .= " relaxant: ${$v}";
+        } elsif ($v eq "Taxon_Certainty" && ${$v}) {
+            $essig_val{Notes} .= " Taxon_Certainty: ${$v}";
+        } elsif ($v eq "fixative" && ${$v}) {
+            $essig_val{Notes} .= " fixative: ${$v}";
+        } elsif ($v eq "Tissue" && ${$v}) {
+            $essig_val{Notes} .= " Tissue sample exists ${$v}";
+
+	} elsif ( ($v eq "specimen_Habitat" || $v eq specimen_MicroHabitat || $v eq "Associated_Taxon") 
+		  && ${$v}) {
+              $essig_val{Habitat_Host}.= " ${$v}";
+	} else {
+	    $essig_val{$v} = ${$v};
+        }
+    }
+
+    # Values that need to be changed
+    $essig_val{seq_num} = 0;
+    $essig_val{ProjectCode} = "EMEC";
+    $essig_val{OtherCatalogNumbers} = $essig_val{bnhm_id};
+    $essig_val{CatalogNumberNumeric} = &get_max_catalognumber("eme","EMEC");
+    $essig_val{bnhm_id} = "EMEC" . $essig_val{CatalogNumberNumeric};
+    $essig_val{record_source} = "Biocode";
+    $essig_val{ProjectCode} = "Moorea Biocode";
+    if ($coll678) {
+	$coll678 =~ s/\,$//g;
+	$essig_val{CollectingLabelNotes} .= " Additional collectors: $coll678";
+    }
+    if ($coll_info) {
+        $essig_val{CollectingLabelNotes} .= " $coll_info";
+    }
+    ## make Essig load file
+    # print "<p><b>Essig</b><p>\n";
+    foreach $attr (@eme_schema) {
+        $val = $essig_val{$attr};
+	if (!$val || $val eq "unselected" || $val eq "none" ) {
+            if ($attr eq "seq_num" || $attr eq "pic") {
+                $val = 0;
+            } else {
+                $val = "\\N";
+            }
+        }
+	# DEBUG  print "<li><font color=green>$attr:</font> $val\n";
+	$loadfile .= "$val|";
+    }
+
+    # Do some error checking 
+
+    # is sci name in eme_species?
+    # ---------------------------
+    if ($essig_val{Genus}) {
+	if ($essig_val{SubSpecificEpithet}) {
+	    $es_count = &get_count("eme_species", "genus='$essig_val{Genus}' and species = '$essig_val{SpecificEpithet} and subspecies = '$essig_val{SubspecificEpithet}'");
+	} else {
+	    $es_count = &get_count("eme_species", "genus='$essig_val{Genus}' and species = '$essig_val{SpecificEpithet}'");
+	}
+	
+	# $error_found .= "<li>Count: $es_count\n";
+	# $error_found .= "<li>Genus: $essig_val{Genus} Species: $essig_val{SpecificEpithet}\n";
+	if (!$es_count) {
+	    # load record from biocde_species to eme_species
+	    foreach $e (@eme_species_schema) {
+		if ($e eq "seq_num") { 
+                    # skip 
+		} else {
+		    $slist .= "$e, ";
+		}
+	    }
+	    # not in biocode, not needed
+	    $slist =~ s/cat_num, //g;
+	    $slist =~ s/genus_photo, //g;
+	    $slist =~ s/family_photo, //g;
+	    $slist =~ s/\, $//g;
+
+	    $insert_stmt = "insert into eme_species ($slist) select $slist from biocode_species where genus = '$essig_val{Genus}' and species = '$essig_val{SpecificEpithet}'";
+	    if ($essig_val{SubSpecificEpithet}) {
+		$insert_stmt .= " and subspecies='$essig_val{SubspecificEpithet}'";
+	    }
+	    &process_query($insert_stmt, "biocode");
+
+	    $copy_cmts .= "<li><i>$essig_val{Genus} $essig_val{SpecificEpithet} $essig_val{SubspecificEpithet}</i> was not found in the Essig species lists. This name has now been added.";
+	    # $copy_cmts .= "<li>insert statement: <br>$insert_stmt<p>\n";
+	} else {
+	    $copy_cmts .= "<li><i>$essig_val{Genus} $essig_val{SpecificEpithet} $essig_val{SubspecificEpithet}</i> was found in the Essig species lists.";
+	}
+    }
+
+    # check collectors 1-5
+    # -------------------
+    if ($essig_val{Collector}) {
+	$collfield = "Collector";
+	$colname = $essig_val{Collector};
+	&check_biocode_collector_in_essig;
+    }
+    foreach $num (2 .. 5)  {
+	$collfield = "Collector" . $num;
+	if ($essig_val{$collfield}) {
+	    $colname = $essig_val{$collfield};
+	    &check_biocode_collector_in_essig;
+	}
+    }
+
+    &load_biocode_record($loadfile,"eme","elib");  
+    # print "<p>Loadfile:<br>$loadfile\n";
+
+}
+
+sub check_biocode_collector_in_essig {
+
+    $colnameurl = $colname;
+    $colnameurl =~ s/\s/\+/g;
+    
+    $coll_count = &get_count("eme_people","name_full='$colname'");
+    if (!$coll_count) {
+	$clist = "name_full,name_last,name_short,name_initials,passwd,email,index_date,entry_by,notes,collector,submitter,affiliation,secondary_names";
+	$insert_coll_stmt = "insert into eme_people ($clist) select $clist from biocode_people where name_full='$colname'";
+	&process_query($insert_coll_stmt, "biocode");
+	$copy_cmts .= "<li>Collector $colname was added to ";
+	$copy_cmts .= "Essig People. ";
+	$copy_cmts .= " <a href=http://essigdb.berkeley.edu/cgi/eme_people_query?name_full=$colnameurl&one=T>Click here</a> to view the record.";
+	# $copy_cmts .= "<li>Query: $insert_coll_stmt";
+    } else {
+	$copy_cmts .= "<li>Collector $colname was found in the Essig People list.";
+    }
+
+}
+
+sub print_specimen_habitat {
+
+    print "<tr>\n";
+    print "<td align=right valign=center>$help_win_link=specimen_Habitat')\">Specimen Habitat";
+    print "</a></td>\n";
+    print "<td><textarea wrap=hard name=specimen_Habitat ";
+    print "cols=30 rows=2";
+    if ($specimen_Habitat) { print " class=yellbg"; }
+    print ">$specimen_Habitat</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+}
+
+sub print_microhabitat {
+
+    print "<tr>\n";
+    print "<td align=right valign=center>$help_win_link=specimen_MicroHabitat')\">Specimen MicroHabitat";
+    print "</a></td>\n";
+    print "<td><textarea wrap=hard name=specimen_MicroHabitat ";
+    print "cols=30 rows=2";
+    if ($specimen_MicroHabitat) { print " class=yellbg"; }
+    print ">$specimen_MicroHabitat</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+}
+
+sub print_associated_taxon {
+
+    print "<tr>\n";
+    print "<td align=right valign=center>$help_win_link=Associated_Taxon')\">Associated Taxon";
+    print "</a></td>\n";
+    print "<td><textarea wrap=hard name=Associated_Taxon ";
+    print "cols=30 rows=2";
+    if ($Associated_Taxon) { print " class=yellbg"; }
+    print ">$Associated_Taxon</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+}
+
+sub print_association_type {
+
+    print "<tr>\n";
+    print "<td align=right valign=center>$help_win_link=association_type')\">Association Type";
+    print "</a></td>\n";
+    print "<td><textarea wrap=hard name=association_type ";
+    print "cols=30 rows=2";
+    if ($association_type) { print " class=yellbg"; }
+    print ">$association_type</textarea>\n";
+    print "</td>\n";
+    print "</tr>\n";
+
+}
+
+sub print_color {
+
+    print "<tr>\n";
+    print "<td align=right valign=center>$help_win_link=color')\">Color";
+    print "</a></td>\n";
+    print "<td align=left>";
+
+    print "<input size=30 name=color value=\"$color\"";
+    if ($color) { print " class=yellbg"; }
+    print ">";
+    print "</td>\n";
+    print "</tr>\n";
+
+
+}
+
+
+
+

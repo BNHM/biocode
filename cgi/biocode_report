@@ -1,0 +1,632 @@
+#!/usr/bin/perl
+# biocode_query Jan 2004  (using mysql)
+require "myschema.p";
+require "utils.p";
+require "myquery_utils.p";
+require "mybiocode_utils.p";
+require "myimg_utils.p";
+require "biocode_settings";
+
+# For download...
+my $tmpdir = "/data1/tmp/biocode_query";
+my $downloadFile ="";
+
+&readParse(*input);
+&parse_input;
+
+&runReports;
+
+sub runReports{
+    print "Content-type: text/html\n\n";
+    my $content="";
+    my $query="";
+    my $name="";
+    my $taxteam="";
+    my $dates = "ifnull(e.yearcollected,0), ifnull(e.monthcollected,0), ifnull(e.daycollected,0)";
+
+    push (@TaxTeams,"IRLA");
+    $taxteam = $input{taxteam};
+
+    if ($input{json} ne "true" && $input{jsonabbr} ne "true") {
+        print "Queries grouped by TaxTeam & Event Date:<br>";
+        print "<form method=GET>\n";
+        print "<select name='taxteam'>\n";
+        print "<option value='ALL BIOCODE'>ALL BIOCODE</option>";
+
+        foreach $tt (@TaxTeams) {
+            print "<option value='". $tt. "' ";
+            if ($tt eq $taxteam) {
+                print " SELECTED";
+            }
+            print ">$tt</option>\n";
+        }
+        print "</select>\n";
+	
+        @queries= qw(specimens tissues events);
+        foreach my $q (@queries) {
+            print "<input type=radio name=query value=$q ";
+            if ($q eq $input{query}) {
+                print " checked";
+            }
+            print "/>$q";
+        }
+
+        print "<input type=submit name=submit value=submit>\n";
+        print "</form>\n";
+
+        print "<br>\n";
+        print "Queries with one result by TaxTeam:<br>";
+
+        print "<table><tr><td>";
+
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=specimens_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# Specimens\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "<td>";
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=species_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# Species\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "<td>";
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=specimens_with_photos_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# Specimens with Photos\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "<td>";
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=specimens_with_tissues_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# Specimens with Tissues\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "<td>";
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=events_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# Events\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "<td>";
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=extractions_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# Extractions\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "<td>";
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=pcr_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# PCR\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "<td>";
+        print "<form method=GET>\n";
+        print "<input type=hidden name=query value=passedsequence_per_taxteam>\n";
+        print "<input type=submit name=submit value=\"# Passed Seqences\">\n";
+        print "</form>\n";
+        print "</td>";
+
+        print "</tr></table>";
+
+
+        print "Queries grouped by HoldingInstitution:<br>";
+        print "<table><tr>\n";
+        print "<form method=GET>\n";
+        print "<select name='taxteam'>\n";
+        print "<option value='ALL BIOCODE'>ALL BIOCODE</option>";
+
+        foreach $tt (@TaxTeams) {
+            print "<option value='". $tt. "' ";
+            if ($tt eq $taxteam) {
+                print " SELECTED";
+            }
+            print ">$tt</option>\n";
+        }
+        print "</select>\n";
+
+        @queries= qw(specimens/holdinginstitution tissues/holdinginstitution);
+
+        foreach $q (@queries) {
+            print "<input type=radio name=query value=$q ";
+            if ($q eq $input{query}) {
+                print " checked";
+            }
+            print "/>$q";
+        }
+
+        print "&nbsp;&nbsp;&nbsp;\n";
+        print "<input type=submit name=submit value=submit>\n";
+        print "</form>\n";
+        print "</tr></table>\n";
+
+
+        print "<p>\n";
+
+
+
+        print "<table><tr>\n";
+        print "<td>\n";
+        print "Queries grouped by TaxTeam & Number Events/Photos:<br>";
+        print "<form method=GET>\n";
+        print "<select name='taxteam'>\n";
+        print "<option value='ALL BIOCODE'>ALL BIOCODE</option>";
+
+        foreach $tt (@TaxTeams) {
+            print "<option value='". $tt. "' ";
+            if ($tt eq $taxteam) {
+                print " SELECTED";
+            }
+            print ">$tt</option>\n";
+        }
+        print "</select>\n";
+	
+        @queries= qw(specimens/event photos/specimen);
+        foreach $q (@queries) {
+            print "<input type=radio name=query value=\"$q\" ";
+            if ($q eq $input{query}) {
+                print " checked";
+            }
+            print "/>$q";
+        }
+
+        print "<input type=submit name=submit value=submit>\n";
+        print "</form>\n";
+        print "</td>\n";
+
+        print "<td>\n";
+        print "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\n";
+        print "</td>\n";
+
+        print "<td>\n";
+        print "Queries grouped by TaxTeam & Species Discovered by Date:<br>";
+        print "<form method=GET>\n";
+        print "<select name='taxteam'>\n";
+        #print "<option value='ALL BIOCODE'>ALL BIOCODE</option>";
+
+        foreach $tt (@TaxTeams) {
+            print "<option value='". $tt. "' ";
+            if ($tt eq $taxteam) {
+                print " SELECTED";
+            }
+            print ">$tt</option>\n";
+        }
+        print "</select>\n";
+	
+        @queries=qw(newUniqueSpeciesPerEvent speciesPerEvent specimensPerEvent);
+        #@queries= qw(species/date species/event);
+        foreach $q (@queries) {
+            print "<input type=radio name=query value=\"$q\" ";
+            if ($q eq $input{query}) {
+                print " checked";
+            }
+            print "/>$q";
+        }
+
+        print "<input type=submit name=submit value=submit>\n";
+        print "</form>\n";
+
+        print "</td>\n";
+
+
+        print "</tr></table>\n";
+
+        print "Unique Taxa by TaxTeam:<br>";
+        print "<table><tr>\n";
+        print "<form method=GET>\n";
+        print "<select name='taxteam'>\n";
+        print "<option value='ALL BIOCODE'>ALL BIOCODE</option>";
+
+        foreach $tt (@TaxTeams) {
+            print "<option value='". $tt. "' ";
+            if ($tt eq $taxteam) {
+                print " SELECTED";
+            }
+            print ">$tt</option>\n";
+        }
+        print "</select>\n";
+        @queries = qw(taxa);
+
+        foreach $q (@queries) {
+            print "<input type=radio name=query value=$q ";
+            if ($q eq 'taxa') {
+                print " checked";
+            }
+            print "/>$q";
+        }
+
+        print "&nbsp;&nbsp;&nbsp;\n";
+        print "<input type=submit name=submit value=submit>\n";
+        print "</form>\n";
+        print "</tr></table>\n";
+
+
+        print "<p>\n";
+
+
+        print "</tr></table>";
+
+        print "************************<br>";
+
+    }
+
+    if (!$input{taxteam} && !$input{query}) {
+    exit;
+}
+
+    if ($input{query} eq "specimens")  {
+        # Specimens
+        $name = "Num. specimens per taxteam per day"; 
+        $query = "SELECT ";
+        $query .= "concat_ws('-'," . $dates. ") as date, COUNT(*) AS Added";
+        $query.=" FROM biocode b,biocode_collecting_event e ";
+        $query.=" WHERE b.coll_eventID=e.eventID";
+        if($taxteam eq "ALL BIOCODE") {
+            $query.=" and b.bnhm_id like 'mbio%' ";
+        } elsif ($taxteam eq "IRLA") {
+            $query.=" and b.bnhm_id like 'irla%' ";
+		} else {
+            $query.=" and e.taxteam like '" . $taxteam . "' ";
+            $query.=" and b.bnhm_id like 'mbio%' ";
+		}
+        $query.=" GROUP BY " . $dates;
+        $query.=" ORDER BY e.taxteam," . $dates;
+
+    } elsif ($input{query} eq "tissues") {
+        # Tissues
+        $name = "Num. tissues per taxteam per day"; 
+        $query = "SELECT ";
+        $query .= "concat_ws('-'," . $dates. ") as date, COUNT(*) AS Added";
+        $query.=" FROM biocode b,biocode_collecting_event e,biocode_tissue t ";
+        $query.=" WHERE b.coll_eventID=e.eventID and b.bnhm_id=t.bnhm_id";
+        if($taxteam eq "ALL BIOCODE") {
+            $query.=" and b.bnhm_id like 'mbio%' ";
+		} elsif ($taxteam eq "IRLA") {
+            $query.=" and b.bnhm_id like 'irla%' ";
+		} else {
+            $query.=" and e.taxteam like '" . $taxteam . "' ";
+            $query.=" and b.bnhm_id like 'mbio%' ";
+        }
+        $query.=" GROUP BY " . $dates;
+        $query.=" ORDER BY e.taxteam," . $dates;
+
+    } elsif ($input{query} eq "events") {
+        $name = "Num. collecting events per taxteam per day"; 
+        $query = "SELECT concat_ws('-'," . $dates. ") as date, COUNT(*) AS Added";
+        $query.=" FROM biocode_collecting_event e ";
+        if($taxteam eq "ALL BIOCODE") {
+            $query.=" WHERE e.projectcode like 'MBIO%' ";
+		} elsif ($taxteam eq "IRLA") {
+            $query.=" WHERE e.projectcode like 'IRLA%' ";
+		} else {
+            $query.=" WHERE e.taxteam like '" . $taxteam . "' ";
+        }
+        #if($taxteam ne "ALL") {
+        #    $query.=" WHERE e.taxteam like '" . $taxteam . "'";
+        #}
+        $query.=" GROUP BY " . $dates;
+        $query.=" ORDER BY e.taxteam," . $dates;
+
+    } elsif ($input{query} eq "percent_events_valid_latlng") {
+        $query = " select c.taxteam,concat_ws('',format(sum(c.decimallatitude < 90 && c.decimallatitude > -90)/count(*),2)*100,'%') ";
+        $query.= " from  biocode_collecting_event c ";
+        $query.= " group by c.taxteam ";
+        $query.= " order by c.taxteam ";
+    } elsif ($input{query} eq "percent_specimens_with_photo") {
+        $query = " select c.taxteam,concat_ws('',format(sum(b.pic =1)/count(*),2)*100,'%') ";
+        $query.= " from biocode b, biocode_collecting_event c ";
+        $query.= " where b.coll_eventid=c.eventid ";
+        $query.= " and b.bnhm_id like 'mbio%' ";
+        $query.= " group by c.taxteam ";
+        $query.= " order by c.taxteam ";
+    } elsif ($input{query} eq "specimens_per_taxteam") {
+        $query = " select c.taxteam,count(*) ";
+        $query.= " from biocode b, biocode_collecting_event c ";
+        $query.= " where b.coll_eventid=c.eventid ";
+        $query.= " and bnhm_id like 'mbio%' ";
+        $query.= " group by c.taxteam ";
+        $query.= " order by c.taxteam ";
+    } elsif ($input{query} eq "specimens_with_photos_per_taxteam") {
+        $query = " select c.taxteam,count(*) ";
+        $query.= " from biocode b, biocode_collecting_event c ";
+        $query.= " where b.coll_eventid=c.eventid ";
+        $query.= " and b.bnhm_id like 'mbio%' ";
+        $query.= " and b.pic = 1 ";
+        $query.= " group by c.taxteam ";
+        $query.= " order by c.taxteam ";
+    } elsif ($input{query} eq "passedsequence_per_taxteam") {
+        $query = " select c.taxteam,count(*) ";
+        $query.=" FROM extraction x,biocode_tissue_join t, biocode_collecting_event c, biocode b, assembly a ";
+        $query.= " where b.coll_eventid=c.eventid ";
+        $query.= " and b.bnhm_id like 'mbio%' ";
+        $query.=" and t.bnhm_id = b.bnhm_id";
+        $query.=" and x.sampleId = t.tissue_id";
+        $query.=" and x.extractionId = a.extraction_id";
+        $query.=" and progress='passed'";
+        $query.= " group by c.taxteam ";
+        $query.=" ORDER BY c.taxteam";
+    } elsif ($input{query} eq "extractions_per_taxteam") {
+        $query = " select c.taxteam,count(*) ";
+        $query.=" FROM extraction x,biocode_tissue_join t, biocode_collecting_event c, biocode b,plate p";
+        $query.= " where b.coll_eventid=c.eventid ";
+        $query.= " and b.bnhm_id like 'mbio%' ";
+        $query.=" and t.bnhm_id = b.bnhm_id";
+        $query.=" and x.sampleId = t.tissue_id";
+	$query.=" and x.plate = p.id";
+	$query.=" and p.name like '%_X1'";
+        $query.= " group by c.taxteam ";
+        $query.=" ORDER BY c.taxteam";
+    } elsif ($input{query} eq "pcr_per_taxteam") {
+        $query = " select c.taxteam,count(*) ";
+        $query.=" FROM extraction x,biocode_tissue_join t, biocode_collecting_event c, biocode b, pcr p ";
+        $query.= " where b.coll_eventid=c.eventid ";
+        $query.= " and b.bnhm_id like 'mbio%' ";
+        $query.=" and t.bnhm_id = b.bnhm_id";
+        $query.=" and x.sampleId = t.tissue_id";
+        $query.=" and x.extractionId = p.extractionId";
+        $query.= " group by c.taxteam ";
+        $query.=" ORDER BY c.taxteam";
+    
+    } elsif ($input{query} eq "events_per_taxteam") {
+        $query.= "select taxteam, count(*) from biocode_collecting_event ";
+        $query.= "where country = 'french polynesia' ";
+        $query.= "group by taxteam ";
+        $query.= "order by taxteam ";
+
+    } elsif ($input{query} eq "specimens_with_tissues_per_taxteam") {
+        $query = " select c.taxteam,count(*) ";
+        $query.= " from biocode b, biocode_collecting_event c ";
+        $query.= " where b.coll_eventid=c.eventid ";
+        $query.= " and b.bnhm_id like 'mbio%' ";
+        $query.= " and b.tissue >= 1 ";
+        $query.= " group by c.taxteam ";
+        $query.= " order by c.taxteam ";
+    } elsif ($input{query} eq "specimens/holdinginstitution") {
+        $query= "select b.holdinginstitution, count(*) from biocode b, biocode_collecting_event c ";
+        $query.= "where b.coll_eventid=c.eventid ";
+        if($taxteam eq "ALL BIOCODE") {
+        	$query.= "and b.projectcode = 'mbio' ";
+		} elsif ($taxteam eq "IRLA") {
+        	$query.= "and b.projectcode = 'irla' ";
+		} else {
+            $query.=" and c.taxteam like '" . $taxteam . "' ";
+        }
+        $query.= " group by b.holdinginstitution ";
+        $query.= " order by b.holdinginstitution ";
+
+    } elsif ($input{query} eq "tissues/holdinginstitution") {
+        $query= "select b.holdinginstitution, count(*) ";
+        $query.= "from biocode as b, biocode_tissue as t, biocode_collecting_event as c ";
+        $query.= "where b.coll_eventid=c.eventid ";
+        $query.= "and b.tissue >= 1 ";
+        $query.= "and b.bnhm_id = t.bnhm_id ";
+        if($taxteam eq "ALL BIOCODE") {
+        	$query.= " and c.projectcode = 'mbio' ";
+		} elsif ($taxteam eq "IRLA") {
+        	$query.= " and c.projectcode = 'irla' ";
+		} else {
+            $query.=" and c.taxteam like '" . $taxteam . "' ";
+        }
+        #if($taxteam ne "ALL") {
+        #    $query.= "and c.taxteam = '$taxteam' ";
+        #}
+        $query.= " group by b.holdinginstitution ";
+        $query.= " order by b.holdinginstitution ";
+
+    } elsif ($input{query} eq "specimens/event") {
+        $name = "Num. specimens per event per taxteam ($taxteam) "; 
+        $query= "select \@cnt := \@cnt +1 as count, \@running :=\@running + mycount as running from (";
+        $query.= "select coll_eventid, count(*) as mycount from biocode ";
+        $query.= "where coll_eventid = ANY ";
+        $query.= "(select eventid ";
+        $query.= "from biocode_collecting_event as c ";
+        #$query.= "where c.country = 'french polynesia' ";
+ 	if($taxteam eq "ALL BIOCODE") {
+            $query.=" where c.projectcode = 'mbio' ";
+        } elsif ($taxteam eq "IRLA") {
+            $query.=" where c.projectcode = 'irla' ";
+        } else { 
+            $query.=" where c.taxteam like '" . $taxteam . "' ";
+        }
+        #if($taxteam ne "ALL") {
+        #    $query.= "and c.taxteam = '$taxteam' ";
+        #}
+        $query.= ") group by coll_eventid order by coll_eventid ";
+        $query.= ") t1, (SELECT \@cnt:=0) t2, (SELECT \@running:=0) t3";
+
+    } elsif ($input{query} eq "photos/specimen") {
+        $name = "Num. photos per specimen per taxteam ($taxteam) "; 
+        $query = "select specimen_no, count(*) from img ";
+        $query .= "where collectn = 'biocode' ";
+        $query .= "and specimen_no = ANY ";
+        $query .= "(select b.bnhm_id ";
+        $query .= "from biocode as b, biocode_collecting_event as c ";
+        $query .= "where c.eventid = b.coll_eventid ";
+        #$query .= "and c.country = 'french polynesia' ";
+ 		if($taxteam eq "ALL BIOCODE") {
+            $query.=" and b.bnhm_id like 'mbio%'";
+        } elsif ($taxteam eq "IRLA") {
+            $query.=" and b.bnhm_id like 'irla%'";
+        } else { 
+            $query.=" and e.taxteam like '" . $taxteam . "'";
+            $query.=" and b.bnhm_id like 'mbio%'";
+        }
+        #if($taxteam ne "ALL") {
+        #    $query .= "and c.taxteam = '$taxteam'";
+        #}
+        $query .= ") group by specimen_no order by specimen_no; ";
+
+    } elsif ($input{query} eq "newUniqueSpeciesPerEvent") {
+        $query  = "select \@cnt := \@cnt +1 as \"index\", \@running := \@running + numNewUniqueSpeciesPerEvent ";
+        $query .= "as \"numNewUniqueSpeciesPerEvent (cumulative)\", eventid, eventdate from (";
+        $query .= "select eventid, numNewUniqueSpeciesPerEvent, eventdate  from species_per_event_accumulation";
+        $query .= " WHERE taxteam = '$taxteam'"; 
+        $query .= ") t1, (SELECT \@cnt:=0) t2, (SELECT \@running:=0) t3";
+
+    } elsif ($input{query} eq "speciesPerEvent") {
+        $query  = "select \@cnt := \@cnt +1 as \"index\", \@running := \@running + numSpeciesPerEvent ";
+        $query .= "as \"numSpeciesPerEvent (cumulative)\", eventid, eventdate from (";
+        $query .= "select eventid, numSpeciesPerEvent, eventdate from species_per_event_accumulation";
+        $query .= " WHERE taxteam = '$taxteam'"; 
+        $query .= ") t1, (SELECT \@cnt:=0) t2, (SELECT \@running:=0) t3";
+
+    } elsif ($input{query} eq "specimensPerEvent") {
+        $query  = "select \@cnt := \@cnt + 1 as \"index\", \@running := \@running + numSpecimens ";
+        $query .= "as \"numSpecimens (cumulative)\", eventid,  eventdate from (";
+        $query .= "select eventid, numSpecimens, eventdate from species_per_event_accumulation";
+        $query .= " WHERE taxteam = '$taxteam'"; 
+        $query .= ") t1, (SELECT \@cnt:=0) t2, (SELECT \@running:=0) t3";
+
+    } elsif($input{query} eq "species_per_taxteam") {
+        $query  = "select taxteam, count(distinct lowesttaxon_generated) ";
+        $query .= "from biocode as b, biocode_collecting_event as e ";
+        $query .= "where b.coll_eventid = e.eventid ";
+        $query .= "and b.bnhm_id like 'mbio%' ";
+        $query .= "group by taxteam order by taxteam; ";
+
+    } elsif ($input{query} eq "count unique taxa") {
+        $query  = "select count(*), Kingdom, Phylum, Subphylum, Superclass, Class, Subclass, Infraclass, Superorder, ";
+        $query .= "Ordr, Suborder, Infraorder, Superfamily, Family, Subfamily, Tribe, Subtribe, Genus, Subgenus, ";
+        $query .= "SpecificEpithet, SubspecificEpithet ";
+        $query .= "from biocode as b, biocode_collecting_event as e ";
+        $query .= "where b.coll_eventid = e.eventid ";
+        $query .= "and b.bnhm_id like 'MBIO%' ";
+        $query .= "and e.taxteam = '$taxteam' ";
+        $query .= "group by ";
+        $query .= "Kingdom, Phylum, Subphylum, Superclass, Class, Subclass, ";
+        $query .= "Infraclass, Superorder, Ordr, Suborder, Infraorder, Superfamily, ";
+        $query .= "Family, Subfamily, Tribe, Subtribe, Genus, Subgenus, ";
+        $query .= "SpecificEpithet, SubspecificEpithet ";
+        $query .= "order by ";
+        $query .= "Kingdom, Phylum, Subphylum, Superclass, Class, Subclass, ";
+        $query .= "Infraclass, Superorder, Ordr, Suborder, Infraorder, Superfamily, ";
+        $query .= "Family, Subfamily, Tribe, Subtribe, Genus, Subgenus, ";
+        $query .= "SpecificEpithet, SubspecificEpithet";
+
+    } else {
+        print "no proper input received";
+        exit;
+    }
+
+    if ($input{json} ne "true" && $input{jsonabbr} ne "true") {
+        print $name;
+        print "<table width=80%><tr><td>";
+    }
+    print &getRecords($query,"biocode_reporting");
+    if ($input{json} ne "true" && $input{jsonabbr} ne "true") {
+        print "</td>";
+        print "<td valign=top>";
+        print "<a href=/tmpfiles/".$downloadFile.">Download</a>\n";
+        print "</td></tr></table>";
+    }
+    exit;
+}
+
+sub getRecords {
+    my $strRet="";
+    my $strJson="";
+    my $strJsonAbbr="";
+
+    my ($query, $database) = @_;
+    my ($count, $field, @row, $tmp);
+
+    $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_user","$g_db_pass");
+    if ( !defined $dbh ) { return "database inaccessible. $DBI::errstr\n"; }
+	$sth = $dbh->prepare( $query ) or return "database inaccessible. $DBI::errstr\n";
+    $sth->execute or return "Error executing query: $query\n";
+
+    foreach $clear (@row) { $clear = ""; }    # clear out array
+
+    $downloadFile = &get_random_filename;
+    open(OH, ">$tmpdir/$downloadFile") || die "Can't open file $downloadFile";
+
+    $strRet.="<table>\n";
+    $strJson .='[';
+    $fieldnum = 0;
+    $count = 0;
+
+    # Column Headings
+    my $names = $sth->{'NAME'};
+    my $numFields = $sth->{'NUM_OF_FIELDS'};
+    $strRet.="<tr>";
+    for (my $i = 0;  $i < $numFields;  $i++) {
+    	$strRet.="<td>$$names[$i]</td>";
+    }
+    $strRet.="</tr>";
+
+    # Rows
+    while ( @row = $sth->fetchrow ) {
+        $count = 0;
+	    $strRet.="<tr>";
+	    $strJson .='{';
+	    foreach $field (@row) {
+            if ($input{json} ne "true" && $input{jsonabbr} ne "true") {
+                print OH "$field\t";
+            }
+            $fieldnum ++;
+
+            # Abbreviated json output
+            if ($input{jsonabbr} eq "true") {
+                if ($fieldnum == 1) {
+                    $strJsonAbbr .="\"$field\":";
+                }
+                if ($fieldnum == 2) {
+                    $strJsonAbbr .= "\"$field\",";
+                }
+            }  
+
+            $strRet.="<td>".$field."</td>";
+            if ($fieldnum == 1) {
+                $strJson .="\"x\":\"$field\",";
+            }
+            if ($fieldnum == 2) {
+                $strJson .= "\"y\":\"$field\"}";
+            }
+        }
+        if ($input{json} ne "true" && $input{jsonabbr} ne "true") {
+            print OH "\n";
+        }
+        $fieldnum = 0;
+        $strJson .= ",";
+        $strRet.="</tr>\n";
+    }
+
+    substr($strJson,0,-1);
+    $strJson .= "]";
+    $strRet.="</table>\n";
+
+    $sth->finish;
+    $dbh->disconnect;
+
+    close(OH);
+    if ($input{json} eq "true") {
+        return $strJson;
+    } elsif ($input{jsonabbr} eq "true") {
+        return $strJsonAbbr;
+    } else {
+        return $strRet;
+    }
+}
+
+
+sub get_random_filename {
+
+    my $tmpfile;
+
+    chdir($tmp_dir);
+    $tmpfile = rand(1000000);
+    $tmpfile = sprintf("%d",$tmpfile);
+    while(-e $tmpfile) {
+        $tmpfile = rand(1000000);
+        $tmpfile = sprintf("%d",$tmpfile);
+    }
+    return $tmpfile;
+}
+
