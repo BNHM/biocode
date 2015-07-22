@@ -1,12 +1,13 @@
 #!/usr/bin/perl
-# biocode_query Jan 2004  (using mysql)
-require "/usr/local/web/cgi/myquery_utils.p";
+# biocode_report_accumulations
+require "/usr/local/web/biocode/cgi/myquery_utils.p";
+require "/usr/local/web/biocode/cgi/biocode_settings";
 
 # need to put this here because wierdness in includes
 @TaxTeams = qw (ALGAE FUNGI PLANTS MINV OUTREACH POC MVERTS TINV TVERTS ALL);
 
 my $database = "biocode_reporting";
-$dbh = DBI->connect("dbi:mysql:$database:localhost","bnhm","frogchorus");
+$dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
 
 # Prepare Tables
 $q= "DROP TABLE IF EXISTS species_per_event_accumulation";
@@ -30,7 +31,7 @@ foreach $tt (@TaxTeams) {
 	$insert = &run_species_per_event_accumulation($tt);
 	if ($insert ne "") {
 		print $insert;
-		$dbh = DBI->connect("dbi:mysql:$database:localhost","bnhm","frogchorus");
+		$dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
 		if ( !defined $dbh ) { print "database inaccessible. $DBI::errstr\n"; }
 	    	$sth = $dbh->prepare( $insert) or print "database inaccessible. $DBI::errstr\n";
 		$sth->execute or print "Error executing query: $query\n";
@@ -43,7 +44,7 @@ foreach $tt (@TaxTeams) {
 	$insert = &run_species_per_date_accumulation($tt);
 	if ($insert ne "") {
 		print $insert;
-		$dbh = DBI->connect("dbi:mysql:$database:localhost","bnhm","frogchorus");
+		$dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
 		if ( !defined $dbh ) { print "database inaccessible. $DBI::errstr\n"; }
 	    	$sth = $dbh->prepare( $insert) or print "database inaccessible. $DBI::errstr\n";
 		$sth->execute or print "Error executing query: $query\n";
@@ -70,7 +71,7 @@ sub run_species_per_date_accumulation($taxteam) {
     }
     $query .= "group by $dates order by $dates";
 
-    $dbh = DBI->connect("dbi:mysql:$database:localhost","bnhm","frogchorus");
+    $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
     if ( !defined $dbh ) { return "database inaccessible. $DBI::errstr\n"; }
         $sth = $dbh->prepare( $query ) or return "database inaccessible. $DBI::errstr\n";
     $sth->execute or return "Error executing query: $query\n";
@@ -101,7 +102,7 @@ sub run_species_per_date_accumulation($taxteam) {
         $query .= "and b.bnhm_id like 'mbio%' ";
         $query .= "group by b.lowesttaxon_generated order by b.lowesttaxon_generated ";
 
-        $dbh = DBI->connect("dbi:mysql:$database:localhost","bnhm","frogchorus");
+        $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
         if ( !defined $dbh ) { return "database inaccessible. $DBI::errstr\n"; }
             $sth = $dbh->prepare( $query ) or return "database inaccessible. $DBI::errstr\n";
         $sth->execute or return "Error executing query: $query\n";
@@ -153,7 +154,7 @@ sub run_species_per_event_accumulation {
 	}
     $query .= "order by $dates";
 
-    $dbh = DBI->connect("dbi:mysql:$database:localhost","bnhm","frogchorus");
+    $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
     if ( !defined $dbh ) { return "database inaccessible. $DBI::errstr\n"; }
     $sth = $dbh->prepare( $query ) or return "database inaccessible. $DBI::errstr\n";
     $sth->execute or return "Error executing query: $query\n";
@@ -179,7 +180,7 @@ sub run_species_per_event_accumulation {
         $query .= "and bnhm_id like 'mbio%' ";
         $query .= "group by lowesttaxon_generated order by lowesttaxon_generated ";
 
-        $dbh = DBI->connect("dbi:mysql:$database:localhost","bnhm","frogchorus");
+        $dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
         if ( !defined $dbh ) { return "database inaccessible. $DBI::errstr\n"; }
             $sth = $dbh->prepare( $query ) or return "database inaccessible. $DBI::errstr\n";
         $sth->execute or return "Error executing query: $query\n";

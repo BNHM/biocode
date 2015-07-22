@@ -7,9 +7,11 @@
 # This runs on cron, updates the counts for all biocode collectors
 
 # $DEBUG = 1;
+push(@INC,"/usr/local/web/biocode/cgi/"); # so that biocode_settings can be found
 
 require "/usr/local/web/biocode/cgi/myquery_utils.p";
 require "/usr/local/web/biocode/cgi/utils.p";
+require "/usr/local/web/biocode/cgi/biocode_settings";
 
 $script_name = "biocode_query";
 

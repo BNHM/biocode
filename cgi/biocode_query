@@ -1704,19 +1704,19 @@ sub print_species_list {
     $dwhere =~ s/ /\+/g;
 
 # commented this out March 18, 2010 -- is broken
-#    if ($download_on) {
-#        $url_downloadformat = $input{downloadformat};
-#        $url_downloadformat =~ s/\s/\+/g;
-#
-#	$filesize = sprintf("%.1f",(-s $query_results) / 1000);
-#	print "<p><li><a href=/cgi/biocode_query?download=$query_results&action=simple&downloadformat=$url_downloadformat";
-#        if($input{only} eq "species") {
-#	    print "&table=biocode&num=$num_matches&whereclause=$dwhere&stat=DOWNLOAD&only=species>Download your results</a> ";
-#        } else {
-#	    print "&table=biocode&num=$num_matches&whereclause=$dwhere&stat=DOWNLOAD>Download your results</a> ";
-#        }
-#	print " (tab-delimited text file, file size = $filesize K)<p>";
-#    }
+    if ($download_on) {
+        $url_downloadformat = $input{downloadformat};
+        $url_downloadformat =~ s/\s/\+/g;
+
+	$filesize = sprintf("%.1f",(-s $query_results) / 1000);
+print "<p><li><a href=/cgi/biocode_query?download=$query_results&action=simple&downloadformat=$url_downloadformat";
+       if($input{only} eq "species") {
+	    print "&table=biocode&num=$num_matches&whereclause=$dwhere&stat=DOWNLOAD&only=species>Download your results</a> ";
+       } else {
+	    print "&table=biocode&num=$num_matches&whereclause=$dwhere&stat=DOWNLOAD>Download your results</a> ";
+        }
+	print " (tab-delimited text file, file size = $filesize K)<p>";
+    }
 
 
     $query_to_display = "SELECT FROM biocode $whereclause $groupclause $orderclause"; # 5/23/05

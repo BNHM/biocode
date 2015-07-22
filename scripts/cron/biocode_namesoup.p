@@ -3,8 +3,6 @@
 #require "/usr/local/web/biocode/cgi/myschema.p";
 require "/usr/local/web/biocode/cgi/utils.p";
 require "/usr/local/web/biocode/cgi/myquery_utils.p"; 
-#require "/usr/local/web/biocode/cgi/myimg_utils.p"; 
-#require "/usr/local/web/biocode/cgi/biocode_settings";
 
 
 $select = "select bnhm_id, ScientificName, ColloquialName, Kingdom, Phylum, Subphylum, Superclass, Class, Subclass, ";
@@ -29,8 +27,6 @@ while(<FH>) {
     $update = "update biocode set namesoup = '$namesoup' where bnhm_id = '$bnhm_id'";
     # print "$update\n";
     &process_query("$update","biocode");
-
-
 }
 
 

@@ -2,18 +2,15 @@
 
 use strict;
 
-
-require "/usr/local/web/test/biocode/cgi/biocode_settings";
-require "/usr/local/web/cgi/utils.p";
-require "/usr/local/web/cgi/myquery_utils.p"; 
-
+require "/usr/local/web/biocode/cgi/utils.p";
+require "/usr/local/web/biocode/cgi/myquery_utils.p"; 
+require "/usr/local/web/biocode/cgi/biocode_settings";
 
 my $select = "select specimen_no, seq_num from img where collectn = 'biocode' and specimen_no is not null";
 my $tmp = &get_multiple_records("$select","image");
 
 open(FH,"$tmp");
-open(OH,">/usr/local/web/test/biocode/scripts/cron/out");
-
+open(OH,">/usr/local/web/biocode/scripts/cron/out");
 
 while (<FH>) {
     my $line = $_;

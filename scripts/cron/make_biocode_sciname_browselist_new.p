@@ -10,10 +10,10 @@
 
 push(@INC,"/usr/local/web/test/biocode/cgi/"); # so that biocode_settings can be found
 
-require "/usr/local/web/test/biocode/cgi/utils.p";
-require "/usr/local/web/test/biocode/cgi/myquery_utils.p";
-require "/usr/local/web/test/biocode/cgi/mybiocode_utils.p";
-require "/usr/local/web/test/biocode/cgi/biocode_settings";
+require "/usr/local/web/biocode/cgi/utils.p";
+require "/usr/local/web/biocode/cgi/myquery_utils.p";
+require "/usr/local/web/biocode/cgi/mybiocode_utils.p";
+require "/usr/local/web/biocode/cgi/biocode_settings";
 
 #$testdir = "/usr/local/web/test/biocode/web/generated";    # in biocode_settings
 #$proddir = "/usr/local/web/biocode/web/generated";         # in biocode_settings

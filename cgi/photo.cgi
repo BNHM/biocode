@@ -32,7 +32,7 @@ Functions:
 =cut
 
 #my $appDirectory = '/Users/biocode/Website/biocode/web/fma/ryanphoto/configs/';
-my $photoDirectory = '/data3/biocode/web/biocode_data/pictures/';
+my $photoDirectory = '/data/biocode/web/biocode_data/pictures/';
 my $convert= '/usr/local/bin/convert';
 our $expeditionPhotoDirectory='';
 our $photoSubDirectory='';

@@ -3,9 +3,9 @@
 # no longer used -- have to write new one? (if remove photos)
 # right now, Dec 5, 2006, pic field is automatically updated to 1 when someone adds a photo (which now goes into CalPhotos)
 
-require "/usr/local/web/cgi/myschema.p";
-require "/usr/local/web/cgi/utils.p";
-require "/usr/local/web/cgi/myquery_utils.p"; 
+require "/usr/local/web/biocode/cgi/myschema.p";
+require "/usr/local/web/biocode/cgi/utils.p";
+require "/usr/local/web/biocode/cgi/myquery_utils.p"; 
 
 $query = "select distinct specimen_no from img where collectn = 'Biocode'";
 $tmp = &get_multiple_records($query,"image");

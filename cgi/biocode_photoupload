@@ -12,31 +12,17 @@ use Data::Dumper;
 use CGI qw(:standard);
 
 &parse_form;
-our $directory="/data3/biocode/web/biocode_data/pictures/".$FORM{'Directory'};
+our $directory="/data/biocode/web/biocode_data/pictures/".$FORM{'Directory'};
 
 my $msg="0";
 
-#my( $name, $value );
-#foreach $name ( $q->param ) {
-#    print "$name:\n";
-#    foreach $value ( $q->param( $name ) ) {
-#        print "  $value\n";
-#    }
-#}
-
-#my $query = new CGI;
-#our $directory=$FORM{projectID};
-#$directory.="/data3/biocode/web/biocode_data/pictures/".$directory;
-#$directory.="/data3/biocode/web/biocode_data/pictures/uploads/";
-
-#`/bin/rm -fr /tmp/photos`;
 `/bin/mkdir $directory`;
 # 1. Upload Files 
 eval {
     # NOTE (from the UploadEasy Site): No CGI object may be created before the CGI::UploadEasy object has been created, or else the upload will fail. 
     # Likewise, if you import method names from CGI.pm, be careful not to call any CGI functions before the creation 
     # of the CGI::UploadEasy object.
-    my $ue = CGI::UploadEasy->new(-uploaddir => '/data3/biocode/web/biocode_data/pictures/55');
+    my $ue = CGI::UploadEasy->new(-uploaddir => '/data/biocode/web/biocode_data/pictures/55');
     #my $ue = CGI::UploadEasy->new(-uploaddir => '/tmp/photos');
 
     my $info = $ue->fileinfo;
@@ -48,13 +34,13 @@ if ($@) {
 
 # 2. Need to check for existince of directory and if not there, then create it
 #my $query = new CGI;
-#$directory="/data3/biocode/web/biocode_data/pictures/".$query->param('projectID');
+#$directory="/data/biocode/web/biocode_data/pictures/".$query->param('projectID');
 #our $directory=$query->param('projectID');
 #print "start".$directory."end";
 #our $directory="55";
 #my @args = ('/bin/mv -f', '/tmp/photos/*', "\'".$directory."\'");
 #my $mvresult = system(@args); 
-#`/bin/mv -f /tmp/photos/* /data3/biocode/web/biocode_data/pictures/$directory/`;
+#`/bin/mv -f /tmp/photos/* /data/biocode/web/biocode_data/pictures/$directory/`;
 
 # 3. Print a success message if finished (and also trap errors to return those to)
 # NOTE: printing a message here can be problematic in the multi-file upload example as i 

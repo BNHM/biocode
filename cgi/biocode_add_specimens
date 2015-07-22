@@ -1514,7 +1514,6 @@ sub load_record {
     }
 
 #    ### see if there's a photo for this specimen -- temporary until we put stuff in CalPhotos
-#    @glob =  glob("/data3/biocode/photos/enlargements/$input{bnhm_id}"."_*.jpg");
 #    foreach $g (@glob) {
 #        $input{pic} = "1";
 #    }

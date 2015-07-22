@@ -8,7 +8,7 @@ require "myquery_utils.p";      # parse input, make_where_clause, build_query, D
 
 #### global variables ####
 
-$loadfile_dir = "/data1/mysql_out/jg";
+$loadfile_dir = "/data/mysql_out/jg";
 
 # May 2013 -- gap between 438581 and 555557
 
@@ -20,7 +20,7 @@ $seq_num = 441666;  # FIGURE THIS OUT ...
 # 98682|Animal|4444 4444 1210|0140|4444 4444 1210 0140
 
 $dl_notes = "Bulk loaded -- JG. 2013-05-20";
-$biocode_photo_dir = "/data3/biocode/photos/ID_folders";
+$biocode_photo_dir = "/data/biocode/photos/ID_folders";
 
 # ALSO see/edit select statement below
 

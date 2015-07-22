@@ -8,7 +8,7 @@ require "myimg_utils.p";
 require "biocode_settings";
 
 # For download...
-my $tmpdir = "/data1/tmp/biocode_query";
+my $tmpdir = "/data/tmp/biocode_query";
 my $downloadFile ="";
 
 &readParse(*input);

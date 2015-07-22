@@ -24,7 +24,7 @@ $tmp_dir =  "$tmp_file_location/biocode_query";
 $selectlist = "*";
 $table = "img";
 $script_name = "biocode_img_query";
-$tmp_file_dir = "/data1/tmp";
+$tmp_file_dir = "/data/tmp";
 $heading = "Moorea Biocode Collections";
 
 
@@ -906,7 +906,7 @@ sub print_detail_anno {
 	print "<br><br><b>Reviewers' comments about this photo</b>";
 	print " (<a href=/cgi/img_anno_query?kwid=$url_kwid>";
 	print "review or add another comment</a>)";
-	$query_results = "/data1/tmp/img_query/$tmp";
+	$query_results = "/data/tmp/img_query/$tmp";
 	open(QR, "$query_results") || die "Can't open tmp file for reading";
 	## print "<dd>$query_results";
 

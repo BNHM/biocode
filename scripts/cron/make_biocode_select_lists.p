@@ -5,12 +5,12 @@
 
 # make all the lists for biocode table
 
-push(@INC,"/usr/local/web/test/biocode/cgi/"); # so that biocode_settings can be found
+push(@INC,"/usr/local/web/biocode/cgi/"); # so that biocode_settings can be found
 
 require "/usr/local/web/biocode/cgi/myquery_utils.p";
 require "/usr/local/web/biocode/cgi/utils.p";
 require "/usr/local/web/biocode/cgi/mybiocode_utils.p";
-require "/usr/local/web/test/biocode/cgi/biocode_settings";
+require "/usr/local/web/biocode/cgi/biocode_settings";
 
 
 $script_name = "biocode_query";

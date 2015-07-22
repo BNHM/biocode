@@ -4,7 +4,7 @@
 
 use DBI;
 
-require "biocode_settings";
+require "/usr/local/web/biocode/cgi/biocode_settings";
 
 $mysql_version = "4.1.10a";  # printed in default_footer  changed 3/28 GO
 

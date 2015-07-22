@@ -900,26 +900,5 @@ sub print_update_link {
 
 
 
-#sub get_eventID_img_info {
-#    # is there a photo for this specimen?
-#    $pic_count = 0;
-#    $query = "select * from biocode_photo where eventID = '$EventID'";
-#    $tmp = &get_multiple_records($query);
-#    if(-s "$tmp_dir/$tmp") {
-#        open(FH, "$tmp_dir/$tmp") || die "Can't open photo tmp file $tmp ";
-#        while ($pic = <FH>) {
-#            @row = split(/\t/,$pic);
-#            &fill_fields_with_values("biocode_photo");
-#            $pic_count++;
-#
-#            $picfile = "/data3/biocode/photos/thumbnails/CE$eventID"."_$photo_num".".jpg";
-#            $picurl = "/biocode/imgs/thumbnails/CE$eventID"."_$photo_num".".jpg";
-#
-#            if (-e $picfile) {
-#                $piclink= "<img src=\"$picurl\" border=0>";
-#            }
-#        }
-#    }
-#}
 
 
