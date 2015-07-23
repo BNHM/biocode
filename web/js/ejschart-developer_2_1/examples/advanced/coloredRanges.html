@@ -1,0 +1,186 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+	<title>Emprise JavaScript Charts - Advanced - Colored Ranges</title>
+	<link rel="stylesheet" href="../includes/template.css" type="text/css" media="screen" />
+	<script type="text/javascript" src="../../dist/EJSChart.js"></script>
+	<script type="text/javascript" src="../includes/code.js"></script>
+	
+	<style type="text/css">
+		#VerticalRange1 { position: absolute; background-color: #FFEEEE; border-left: 2px solid #EEDDDD; border-right: 2px solid #EEDDDD; }
+		#VerticalRange2 { position: absolute; background-color: #EEDDEE; border-left: 2px solid #DDCCDD; border-right: 2px solid #DDCCDD; }
+	</style>
+</head>
+
+<body>
+<div id="wrap">
+
+		<div id="header">
+		
+			<h1 id="logo-text"><a href="http://www.ejschart.com/"><span class="gray">Emprise JavaScript Charts</span></a></h1>			
+					
+			<div id="header-tabs">
+				<ul>
+					<li><a href="http://www.ejschart.com/index.php"><span>Home</span></a></li>
+					<li><a href="http://www.ejschart.com/pricing.php"><span>Pricing</span></a></li>
+					<li><a href="http://www.ejschart.com/forums/"><span>Forums</span></a></li>
+					<li><a href="http://www.ejschart.com/support.php"><span>Support</span></a></li>
+				</ul>
+
+			</div>				
+			
+		</div>
+	  
+	  <!-- content-wrap starts here -->
+	  <div id="content-wrap">
+	  
+	  		<div id="main">
+				<h1>Colored Ranges - Vertical</h1>
+
+				<div class="breadcrumbs">Return to: <a href="../index.html" class="crumb">Examples</a> &raquo; <a href="../index.html#advanced" class="crumb">Advanced Examples</a></div> 
+
+				<div class="onecolumn">
+					<div class="default">
+						<h2 class="result">Description</h2>
+						
+						<p class="result" style="height: 68px">
+							This chart displays a line series with dates on its x axis and integer values on its y axis.
+							The two shaded regions are dynamically sized and moved with the chart and represent important
+							date ranges.<br/><br/>
+							These ranges are added manually through DIV elements positioned behind the chart.
+						</p>
+
+						<div id="VerticalRange1"></div>
+						<div id="VerticalRange2"></div>
+						
+						<div id="myChart1a" class="chart"></div>
+						
+						<h2 class="code">Source Code</h2>
+						<ol class="code" id="code1a"><span>Rendering Source Code...</span></ol>
+					</div>
+				</div>				
+<script type="text/javascript" id="script1a">
+	// Save references to the ranges for easier access later
+	var VerticalRange1 = document.getElementById("VerticalRange1");
+	var VerticalRange2 = document.getElementById("VerticalRange2");
+
+	// Our important date ranges:
+	var vr1_start = (new Date("07/28/2008 12:00")).getTime();
+	var vr1_end = (new Date("07/31/2008 00:00")).getTime();
+	var vr2_start = (new Date("08/04/2008 12:00")).getTime();
+	var vr2_end = (new Date("08/07/2008 00:00")).getTime();
+
+	// This method will take the current zoom coordinates and position
+	// the given range
+	function positionRange(bottom_zoom, left_zoom, range, range_start, range_end) {
+
+		// Determine if vertical range is in view and if it needs to 
+		// be adjusted because its only partially in view
+		
+		// Is the range completely out of view?
+		if (bottom_zoom.min > range_end || bottom_zoom.max < range_start) {
+			// Hide the range
+			range.style.display = "none";
+		} else {
+			// Display the range
+			range.style.display = "block";
+	
+			// Set the top and bottom of the range to the min/max of the current 
+			// y axis zoom (i.e. it takes up the whole chart area vertically
+			range.style.top = chart.axis_left.pointToPixel(left_zoom.max) + "px";
+			range.style.height = chart.axis_left.pointToPixel(left_zoom.min) - parseFloat(range.style.top) + "px";
+	
+			// Is the range completely in view?
+			if (bottom_zoom.min <= range_start && bottom_zoom.max >= range_end) {
+				// Set the left and right of the range exactly
+				range.style.left = chart.axis_bottom.pointToPixel(range_start) + "px";
+				range.style.width = chart.axis_bottom.pointToPixel(range_end) - parseFloat(range.style.left) + "px";				
+			} else {
+				// Adjust the left or right as necessary to keep the range within
+				// the bounds of the chart
+				if (bottom_zoom.min <= range_start) {
+					range.style.left = chart.axis_bottom.pointToPixel(range_start) + "px";
+				} else {
+					range.style.left = chart.axis_bottom.pointToPixel(bottom_zoom.min) + "px";
+				}
+				if (bottom_zoom.max >= range_end) {
+					range.style.width = chart.axis_bottom.pointToPixel(range_end) - parseFloat(range.style.left) + "px";
+				} else {				
+					range.style.width = chart.axis_bottom.pointToPixel(bottom_zoom.max) - parseFloat(range.style.left) +  "px";				
+				}
+			}
+		}
+	};
+
+	// doAfterDraw will be attached to the chart's onAfterDraw event and
+	// move the markers into the correct position
+	function doAfterDraw() {
+
+		// Get the current coordinates of the chart area in axis-specific units
+		var bottom_zoom = chart.axis_bottom.getZoom();
+		var left_zoom = chart.axis_left.getZoom();
+
+		if (!isNaN(bottom_zoom.min) && !isNaN(bottom_zoom.max) &&
+		!isNaN(left_zoom.min) && !isNaN(left_zoom.max)) {
+			positionRange(bottom_zoom, left_zoom, VerticalRange1, vr1_start, vr1_end);
+			positionRange(bottom_zoom, left_zoom, VerticalRange2, vr2_start, vr2_end);
+		}		
+
+	}
+
+	var chart = new EJSC.Chart("myChart1a", 
+		{ 
+			show_titlebar: false,
+			show_legend: false,
+			axis_bottom: { 
+				size: 30,
+				caption: "Dates", 
+				extremes_ticks: true,
+				formatter: new EJSC.DateFormatter({format_string: "MM/DD<br/>HH:NN"}) 
+			}, 
+			axis_left: { caption: "Level" },
+			allow_zoom: true,
+			
+			onAfterDraw: doAfterDraw
+			
+		}
+	);
+	
+	var series1 = new EJSC.LineSeries(
+		new EJSC.ArrayDataHandler(randomArray(12, undefined, undefined, undefined, undefined, (1000*60*60*24), (new Date("07/28/2008 00:00")).getTime())),
+		{
+		}
+	);
+
+	chart.addSeries(series1);
+
+</script>
+
+
+				<div class="breadcrumbs">Return to: <a href="../index.html" class="crumb">Examples</a> &raquo; <a href="../index.html#advanced" class="crumb">Advanced Examples</a></div> 
+
+			</div>
+
+		</div>
+		
+		<div id="footer">
+		
+			<span id="footer-left">
+				&copy; 2006-2007 <strong><a href="http://www.emprisecorporation.com/">Emprise Corporation</a></strong> | 
+				Design by: <strong><a href="http://www.styleshout.com/">styleshout</a></strong> | 
+				Valid: <a href="http://validator.w3.org/">XHTML</a> | 
+				<a href="http://jigsaw.w3.org/css-validator/check/referer">CSS</a>
+
+			</span>		
+			
+			<span id="footer-right">
+				<a href="http://www.ejschart.com/">Home</a> 
+			</span>
+			
+		</div>	
+
+<!-- wrap ends here -->		
+</div>
+</body>
+
+</html>

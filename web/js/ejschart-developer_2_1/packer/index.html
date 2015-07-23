@@ -1,0 +1,139 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+
+<title>Emprise JavaScript Charts - Packer utility</title>
+
+<link rel="stylesheet" href="includes/template.css" type="text/css" media="screen" />
+<script type="text/javascript" src="includes/base2-load.js"></script>
+<script type="text/javascript" src="includes/Packer.js"></script>
+<script type="text/javascript" src="includes/Words.js"></script>
+
+<script type="text/javascript">
+var packer = new Packer;
+
+function clearClick() {
+
+	var input = document.getElementById("input");
+	var output = document.getElementById("output");
+	var status = document.getElementById("pack_status");
+
+	input.value = "";
+	output.value = "";
+
+	status.innerHTML = "Ready";
+
+}
+
+function packClick() {
+
+	try {
+		var input = document.getElementById("input");
+		var output = document.getElementById("output");
+		var status = document.getElementById("pack_status");
+
+		output.value = "";
+		if (input.value) {
+			var value = packer.pack(input.value, true, false);
+
+			output.value =
+"/**********************************************************************\n" +
+"/* Emprise JavaScript Charts 2.1 http://www.ejschart.com/\n" +
+"/* Copyright (C) 2006-2009 Emprise Corporation. All Rights Reserved.\n" +
+"/*\n" +
+"/* WARNING: This software program is protected by copyright law \n" +
+"/* and international treaties. Unauthorized reproduction or\n" +
+"/* distribution of this program, or any portion of it, may result\n" +
+"/* in severe civil and criminal penalties, and will be prosecuted\n" +
+"/* to the maximum extent possible under the law.\n" +
+"/*\n" +
+"/* See http://www.ejschart.com/license.html for full license.\n" +
+"/**********************************************************************/\n" +
+value;
+
+			var length = input.value.length;
+			if (!/\r/.test(input.value)) { // mozilla trims carriage returns
+				length += match(input.value, /\n/g).length;
+			}
+			var calc = output.value.length + "/" + length;
+			var ratio = (output.value.length / length).toFixed(3);
+			status.innerHTML = format("compression ratio: %1=%2", calc, ratio);
+
+		}
+	} catch (error) {
+		status.innerHTML = "error packing script";
+	}
+}
+
+if (!(0).toFixed) Number.prototype.toFixed = function(n) {
+	var e = Math.pow(10, n);
+	var r = String(Math.round(this * e));
+	if (r == 0) for (var i = 0; i < n; i++) r += "0";
+	return r.slice(0, r.length - n) + "." + r.slice(r.length - n);
+};
+
+</script>
+
+</head>
+
+<body onload="clearClick();">
+<div id="wrap">
+
+		<div id="header">
+
+			<h1 id="logo-text"><a href="http://www.ejschart.com/"><span class="gray">Emprise JavaScript Charts</span></a></h1>
+
+			<div id="header-tabs">
+				<ul>
+					<li><a href="http://www.ejschart.com/index.php"><span>Home</span></a></li>
+					<li><a href="http://www.ejschart.com/pricing.php"><span>Pricing</span></a></li>
+					<li><a href="http://www.ejschart.com/forums/"><span>Forums</span></a></li>
+					<li><a href="http://www.ejschart.com/support.php"><span>Support</span></a></li>
+				</ul>
+
+			</div>
+
+		</div>
+
+	  <!-- content-wrap starts here -->
+	  <div id="content-wrap">
+
+	  		<div id="main">
+
+	  			<h1>Packer Utility <br /><cite>Original source by Dean Edwards, <a href="http://dean.edwards.name/packer/">http://dean.edwards.name/packer/</a></cite></h1>
+
+				<h2>Paste Uncompressed EJSChart Source:</h2>
+
+				<textarea id="input" spellcheck="false"></textarea>
+				<button onclick="packClick();">Compress</button><button onclick="clearClick();">Clear</button>
+				<div class="clear"></div>
+
+				<h2>Copy Compressed Code:</h2>
+				<textarea readonly="readonly" class="readonly" id="output" spellcheck="false"></textarea>
+				<div id="pack_status"></div>
+
+			</div>
+
+		</div>
+
+		<div id="footer">
+
+			<span id="footer-left">
+				&copy; 2006-2007 <strong><a href="http://www.emprisecorporation.com/">Emprise Corporation</a></strong> |
+				Design by: <strong><a href="http://www.styleshout.com/">styleshout</a></strong> |
+				Valid: <a href="http://validator.w3.org/">XHTML</a> |
+				<a href="http://jigsaw.w3.org/css-validator/check/referer">CSS</a>
+
+			</span>
+
+			<span id="footer-right">
+				<a href="http://www.ejschart.com/">Home</a>
+			</span>
+
+		</div>
+
+<!-- wrap ends here -->
+</div>
+</body>
+
+</html>

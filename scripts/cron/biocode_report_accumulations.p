@@ -30,7 +30,7 @@ $sth->execute or print "Error executing query: $query\n";
 foreach $tt (@TaxTeams) {
 	$insert = &run_species_per_event_accumulation($tt);
 	if ($insert ne "") {
-		print $insert;
+		#print $insert;
 		$dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
 		if ( !defined $dbh ) { print "database inaccessible. $DBI::errstr\n"; }
 	    	$sth = $dbh->prepare( $insert) or print "database inaccessible. $DBI::errstr\n";
@@ -43,7 +43,7 @@ foreach $tt (@TaxTeams) {
 foreach $tt (@TaxTeams) {
 	$insert = &run_species_per_date_accumulation($tt);
 	if ($insert ne "") {
-		print $insert;
+		#print $insert;
 		$dbh = DBI->connect("dbi:mysql:$database:$g_db_location","$g_db_fulluser","$g_db_fullpass");
 		if ( !defined $dbh ) { print "database inaccessible. $DBI::errstr\n"; }
 	    	$sth = $dbh->prepare( $insert) or print "database inaccessible. $DBI::errstr\n";
