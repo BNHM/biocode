@@ -850,7 +850,7 @@ sub get_bnhm_mapper_url_coll {
 
     ## note:  label=1 turns political labels on
 
-    $url = "http://bnhmmaps.berkeley.edu/index.php?ViewResults=tab&tabfile=$tabfile&configfile=$xml&sourcename=Moorea+Biocode+Collecting+Events&biocode=true&label=1&maptype=Satellite";
+    $url = "http://bnhmmaps.berkeley.edu/index.html?ViewResults=tab&tabfile=$tabfile&configfile=$xml&sourcename=Moorea+Biocode+Collecting+Events&biocode=true&label=1&maptype=Satellite";
 
     return $url;
 

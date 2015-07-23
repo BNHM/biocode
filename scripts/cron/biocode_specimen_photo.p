@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-
+push(@INC,"/usr/local/web/biocode/cgi/"); # so that biocode_settings can be found
 # no longer used -- have to write new one? (if remove photos)
 # right now, Dec 5, 2006, pic field is automatically updated to 1 when someone adds a photo (which now goes into CalPhotos)
 

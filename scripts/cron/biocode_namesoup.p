@@ -1,35 +1,9 @@
 #!/usr/bin/perl
-
-#require "/usr/local/web/biocode/cgi/myschema.p";
+push(@INC,"/usr/local/web/biocode/cgi/"); # so that biocode_settings can be found
 require "/usr/local/web/biocode/cgi/utils.p";
 require "/usr/local/web/biocode/cgi/myquery_utils.p"; 
 
+$update = "update biocode set namesoup = concat( coalesce(scientificname,''), ' ', coalesce(colloquialname,''), ' ', coalesce(kingdom,''), ' ', coalesce(phylum,''), ' ', coalesce(subphylum,''), ' ', coalesce(superclass,''), ' ', coalesce(class,''), ' ', coalesce(subclass,''), ' ', coalesce(infraclass,''), ' ', coalesce(superorder,''), ' ', coalesce(ordr,''), ' ', coalesce(suborder,''), ' ', coalesce(infraorder,''), ' ', coalesce(superfamily,''), ' ', coalesce(family,''), ' ', coalesce(subfamily,''), ' ', coalesce(tribe,''), ' ', coalesce(subtribe,''), ' ', coalesce(genus,''), ' ', coalesce(subgenus,''), ' ', coalesce(specificepithet,''))";
 
-$select = "select bnhm_id, ScientificName, ColloquialName, Kingdom, Phylum, Subphylum, Superclass, Class, Subclass, ";
-$select .= "Infraclass, Superorder, Ordr, Suborder, Infraorder, Superfamily, Family, Subfamily, Tribe, Subtribe, ";
-$select .= "Genus, Subgenus, SpecificEpithet ";
-$select .= "from biocode";
-
-
-$tmp = &get_multiple_records("$select","biocode");
-open(FH,"$tmp");
-
-while(<FH>) {
-    $row = $_;
-    chomp($row);
-    ($bnhm_id, $ScientificName, $ColloquialName, $Kingdom, $Phylum, $Subphylum, $Superclass, $Class, $Subclass, $Infraclass, $Superorder, $Ordr, $Suborder, $Infraorder, $Superfamily, $Family, $Subfamily, $Tribe, $Subtribe, $Genus, $Subgenus, $SpecificEpithet) = split(/\t/,$row);
-
-    $namesoup  = "$ScientificName $ColloquialName $Kingdom $Phylum $Subphylum $Superclass $Class $Subclass ";
-    $namesoup .= "$Infraclass $Superorder $Ordr $Suborder $Infraorder $Superfamily $Family $Subfamily $Tribe $Subtribe $Genus $Subgenus $SpecificEpithet";
-    $namesoup =~ s/'/\\'/g;
-    $namesoup = &strip($namesoup);
- 
-    $update = "update biocode set namesoup = '$namesoup' where bnhm_id = '$bnhm_id'";
-    # print "$update\n";
-    &process_query("$update","biocode");
-}
-
-
-close(FH);
-
+&process_query("$update","biocode");
 

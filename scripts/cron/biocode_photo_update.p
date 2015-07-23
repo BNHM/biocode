@@ -1,6 +1,7 @@
 #!/usr/bin/perl
-
 use strict;
+
+push(@INC,"/usr/local/web/biocode/cgi/"); # so that biocode_settings can be found
 
 require "/usr/local/web/biocode/cgi/utils.p";
 require "/usr/local/web/biocode/cgi/myquery_utils.p"; 
