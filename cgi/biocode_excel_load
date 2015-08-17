@@ -243,7 +243,9 @@ sub check_data {
         }
     }
     
-    if($specimen_sheet_exists) {
+    # specimen was not getting set properly here...
+    #$specimen = "false";
+    if($specimen_sheet_exists eq "true") {
         if ($specimen ne "false") {
         # following only generates warnings
         $localWarning_msg .= &checkUniquenessofSpecimen_num_Collector($s);
