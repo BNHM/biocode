@@ -3410,7 +3410,7 @@ sub load_biocode_record {
     print FH "$load_record\n";
     close(FH);
 
-    $load = "load data infile '$loadfile' into table $table fields terminated by '|';";
+    $load = "load data local infile '$loadfile' into table $table fields terminated by '|';";
 
 
     open(FH, ">$loadfile2");
@@ -3418,7 +3418,7 @@ sub load_biocode_record {
     close(FH);
 
 
-    `/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_pass --user=$g_db_user $database`;
+    `/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_fullpass --user=$g_db_fulluser --host=$g_db_location $database`;
 
     # copy to Weekly
 
@@ -3471,7 +3471,8 @@ sub load_biocode_tissue_record {
     print FH "$load\n";
     close(FH);
 
-    `/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_pass --user=$g_db_user biocode`;
+    #`/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_pass --user=$g_db_user biocode`;
+    `/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_fullpass --user=$g_db_fulluser --host=$g_db_location $database`;
 
 
     # copy to Weekly
