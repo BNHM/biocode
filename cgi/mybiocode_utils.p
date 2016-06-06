@@ -39,7 +39,7 @@ tissue5_barcode tissue5_container tissue5_preservative tissue5_type_preserved ti
 
 @ProjectCodes = qw(CMPI INDO IRLA MBIO SLAB);
 
-@institutions = ("Australian National Insect Collection","Australian Museum","Bishop Museum", "Brigham Young University","California Academy of Sciences","California State Collection of Arthropods","Canadian National Collection of Insects, Arachnids and Nematodes","Criobe", "Duke University", "Emirates Natural History Group","Essig Museum of Entomology", "Gump Station", "Haddock Lab", "Harry Palm Lab", "Harvard University", "Hochberg Lab", "Illinois Natural History Survey","Institut de Recherche pour le Développement Herbarium", "Indonesian Biodiversity Research Center", "Instituto Nacional de Pesquisas da Amazônia","KwaZulu-Natal Museum","Laboratoire Biométrie et Biologie Evolutive, University Lyon 1", "MBARI", "Mishler Lab", "Moscow State University", "Muséum National d'Histoire Naturelle", "Oxford University Museum of Natural History", "National Museum Bloemfontein","Natural History Museum of Los Angeles County","North Carolina State University","Planes's Lab", "Raffles Museum of Biodiversity Research", "Smithsonian", "Museum of Vertebrate Zoology", "Museum Victoria", "Museums and Art Galleries of the Northern Territories", "Norenburg Lab", "Queensland Museum", "Scripps Institution of Oceanography", "The University and Jepson Herbaria", "Tom Cribb Lab", "Université de Polynésie Française Herbarium", "University of California Museum of Paleontology", "University of Florida", "University of Guelph", "Watling Lab", "Other", "No Voucher");
+@institutions = ("Australian National Insect Collection","Australian Museum","Bishop Museum", "Brigham Young University","California Academy of Sciences","California State Collection of Arthropods","Canadian National Collection of Insects, Arachnids and Nematodes","Criobe", "Duke University", "Emirates Natural History Group","Essig Museum of Entomology", "Gump Station", "Haddock Lab", "Harry Palm Lab", "Harvard University", "Hochberg Lab", "Illinois Natural History Survey","Institut de Recherche pour le Développement Herbarium", "Indonesian Biodiversity Research Center", "Instituto Nacional de Pesquisas da Amazônia","KwaZulu-Natal Museum","Laboratoire Biométrie et Biologie Evolutive, University Lyon 1", "MBARI", "Mishler Lab", "Moscow State University", "Muséum National d'Histoire Naturelle", "Oxford University Museum of Natural History", "National Museum Bloemfontein","Natural History Museum of Los Angeles County","North Carolina State University","Planes's Lab", "Raffles Museum of Biodiversity Research", "Smithsonian", "Museum of Vertebrate Zoology", "Museum Victoria", "Museums and Art Galleries of the Northern Territories", "Norenburg Lab", "Queensland Museum", "Scripps Institution of Oceanography", "The University and Jepson Herbaria", "Tom Cribb Lab", "Université de Polynésie Française Herbarium", "University of California Museum of Paleontology", "University of Florida", "University of Guelph", "Watling Lab", "Other", "No Voucher", "PNMNH");
 
 @Accession_Types = ("Bequest", "Gift", "Staff Collection", "Student Collection", "Other");
 
@@ -75,7 +75,7 @@ tissue5_barcode tissue5_container tissue5_preservative tissue5_type_preserved ti
 
 # this is the phylum array that's checked in the bulk loader
 
-@Phyla = qw (Acanthocephala Acoelomorpha Annelida Anthocerotophyta Arthropoda Brachiopoda Bryozoa Bryophyta Chaetognatha Chlorophyta Chordata Ciliophora Cnidaria Coniferophyta Ctenophora Cyanobacteria Cycadophyta Cycliophora Cyrtotreta Dikaryomycota Echinodermata Echiura Enteropneusta Entoprocta Foraminifera Gastrotricha Glomeromycota Gnathostomulida Granuloreticulosa Hemichordata Kinorhyncha Loricifera Magnoliophyta Marchantiophyta Metazoa Mollusca Myxozoa Nematoda Nematomorpha Nemertea Onychophora Phaeophyta Phoronida Pinophyta Placozoa Plantae Platyhelminthes Porifera Priapulida Protista Pteridophyta Pterobranchia Rhizaria Rhodophyta Rotifera Sarcomastigophora Sipuncula Streptophyta Tardigrada Tracheophyta PlaceHolder);
+@Phyla = qw (Acanthocephala Acoelomorpha Annelida Anthocerotophyta Arthropoda Brachiopoda Bryozoa Bryophyta Chaetognatha Chlorophyta Chordata Ciliophora Cnidaria Coniferophyta Ctenophora Cyanobacteria Cycadophyta Cycliophora Cyrtotreta Dikaryomycota Echinodermata Echiura Enteropneusta Entoprocta Foraminifera Gastrotricha Glomeromycota Gnathostomulida Granuloreticulosa Hemichordata Kinorhyncha Loricifera Magnoliophyta Marchantiophyta Metazoa Mollusca Myxozoa Nematoda Nematomorpha Nemertea Onychophora Phaeophyta Phoronida Pinophyta Placozoa Plantae Platyhelminthes Porifera Priapulida Protista Pteridophyta Pterobranchia Rhizaria Rhodophyta Rotifera Sarcomastigophora Sipuncula Streptophyta Tardigrada Tracheophyta Xenocoelamorpha PlaceHolder);
 
 
 @TaxTeams = qw (ALGAE FUNGI PLANTS MINV OUTREACH POC MVERTS TINV TVERTS);
@@ -310,6 +310,12 @@ sub make_people_select_list {
     }
     print ( OUT_XML "</people>\n");
     close(FH);
+
+    `/bin/chmod 666 $out`;
+    `/bin/chmod 666 $out_xml`;
+    `/bin/chmod 666 $out_col`;
+    `/bin/chmod 666 $out_sub`;
+
     close(OUT);
     close(OUT_XML);
     close(OUT_COL);
@@ -3418,7 +3424,7 @@ sub load_biocode_record {
     close(FH);
 
 
-    `/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_fullpass --user=$g_db_fulluser --host=$g_db_location $database`;
+    `/bin/cat $loadfile2 | /usr/bin/mysql --password=$g_db_fullpass --user=$g_db_fulluser --host=$g_db_location $database`;
 
     # copy to Weekly
 
@@ -3471,8 +3477,8 @@ sub load_biocode_tissue_record {
     print FH "$load\n";
     close(FH);
 
-    #`/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_pass --user=$g_db_user biocode`;
-    `/bin/cat $loadfile2 | /usr/local/mysql/bin/mysql --password=$g_db_fullpass --user=$g_db_fulluser --host=$g_db_location $database`;
+    #`/bin/cat $loadfile2 | /usr/bin/mysql --password=$g_db_pass --user=$g_db_user biocode`;
+    `/bin/cat $loadfile2 | /usr/bin/mysql --password=$g_db_fullpass --user=$g_db_fulluser --host=$g_db_location $database`;
 
 
     # copy to Weekly

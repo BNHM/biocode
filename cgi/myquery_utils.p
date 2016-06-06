@@ -1439,7 +1439,8 @@ sub get_one_record {
     }
     $sth = $dbh->prepare( $query )
         or die "Can't prepare statement: $DBI::errstr\n";
-    $sth->execute;
+    $sth->execute 
+        or die "Unable to execute query: $query";
     @row = $sth->fetchrow;
     $sth->finish;
     $dbh->disconnect;

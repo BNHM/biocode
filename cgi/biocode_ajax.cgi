@@ -163,7 +163,9 @@ sub loadPlates() {
 }
 sub loadBatches() {
  	$dbh = DBI->connect($gBiocodeDbString,$g_db_user,$g_db_pass);
-        my $sql= @_[0];
+	# JBD changed the following line based on advice in error logs saying its better written with a $
+        #my $sql= @_[0];
+        my $sql= $_[0];
 	$res=$dbh->selectall_arrayref($sql);
 	$i=0;
 	foreach ( @$res ) { 

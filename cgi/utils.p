@@ -413,24 +413,6 @@ $TODAY = &get_todays_date;
 );
 
 
-#sub check_selectlist_for_name {  # biocode_upload
-#    local($subdir,$list,$incname) = @_;  # subdir="biocode", list="people.txt"
-#
-#    $fname = "/usr/local/bscit/select_lists/$subdir/$list";
-#    open(SEL, "$fname") || die "Can't open $fname ";
-#    while(<SEL>) {
-#        $line = $_;
-#	$line =~ s/<option>//g;
-#	$line = &strip($line);
-#	#$bad_msg .= "<li>|$line|";
-#	if ($line eq $incname) {
-#	    return(1);
-#	}
-#    }
-#    return(0);
-#    close(SEL);
-#}
-
 sub check_selectlist_for_name {  # biocode_upload
     local($subdir,$list,$incname) = @_;  # subdir="biocode", list="people.txt"
 
@@ -2659,7 +2641,7 @@ sub print_country_options_all {
 	print "<option>unselected\n";
     }
     # 2/2008 note: this list is currently hand-edited
-    $country_list = "/usr/local/bscit/select_lists/geo_data/country_all.txt";
+    $country_list = "/usr/local/web/biocode/web/select_lists/geo_data/country_all.txt";
     open(G,$country_list) || die "Can't open $country_list";
 
     while ($line = <G>) {
@@ -2684,7 +2666,7 @@ sub print_state_options_all {
         print "<option selected>unselected\n";
     }
  
-    $state_list = "/usr/local/bscit/select_lists/geo_data/state_all.txt";
+    $state_list = "/usr/local/web/biocode/web/select_lists/geo_data/state_all.txt";
     open(G,$state_list) || die "Can't open $state_list";
 
     while ($line = <G>) {
