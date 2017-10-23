@@ -109,7 +109,8 @@ if($input{step} eq "form") {         # initial filling out of form
 
 
 sub check_permissions {
-    $query = "select * from biocode_people where name_full = '$fullname' and name_initials = '$initials'";
+    #$query = "select * from biocode_people where name_full = '$fullname' and name_initials = '$initials'";
+    $query = "select * from biocode_people where name_full = '$fullname' ";
     $query .= " and name_initials is not null and edit_species = 1";
     (@row) = &get_one_record($query);
     if(!$row[1]) {

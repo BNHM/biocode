@@ -163,8 +163,8 @@ END
 
 sub checklogin {
 
-    $query = "select * from biocode_people where name_initials = '$input{name}' and passwd = '$input{password}' ";
-    $query .= " and name_initials is not null and edit_species = 1 ";
+    $query = "select * from biocode_people where name_full = '$input{name}' and passwd = '$input{password}' ";
+    #$query .= " and name_initials is not null and edit_species = 1 ";
     @row = &get_one_record("$query");
     &fill_fields_with_values("biocode_people");
     if($row[1]) {
